@@ -96,10 +96,7 @@ export default function StickerUploader() {
 
     setError(null);
     setSelectedFile(file);
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return URL.createObjectURL(file);
-    });
+    setPreviewUrl(URL.createObjectURL(file));
   }
 
   function onFileInputChange(e: ChangeEvent<HTMLInputElement>) {
@@ -180,15 +177,12 @@ export default function StickerUploader() {
       const rawAiCaption = response.headers.get("X-Ai-Caption");
       const aiCaption = rawAiCaption ? decodeURIComponent(rawAiCaption) : null;
 
-      setResult((prev) => {
-        if (prev?.url) URL.revokeObjectURL(prev.url);
-        return {
-          url: objectUrl,
-          sizeKb,
-          processMs,
-          commandType,
-          aiCaption,
-        };
+      setResult({
+        url: objectUrl,
+        sizeKb,
+        processMs,
+        commandType,
+        aiCaption,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");

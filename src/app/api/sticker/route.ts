@@ -11,6 +11,7 @@ import {
 import type { StickerCommandType, StickerLogInsert } from "@/types/database";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -153,6 +154,15 @@ export async function POST(request: NextRequest) {
       case "meme_text": {
         const topText = String(formData.get("topText") ?? "").trim();
         const bottomText = String(formData.get("bottomText") ?? "").trim();
+        if (!topText && !bottomText) {
+          return NextResponse.json(
+            {
+              error:
+                "Minimal salah satu dari Teks Atas atau Teks Bawah wajib diisi untuk mode Meme Klasik.",
+            },
+            { status: 400 }
+          );
+        }
         captionLog = `${topText} | ${bottomText}`.slice(0, 200);
         result = await processImageToSticker(imageBuffer!, {
           topText,

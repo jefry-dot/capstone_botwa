@@ -1,4 +1,4 @@
-const GRAPH_API_VERSION = "v21.0";
+const GRAPH_API_VERSION = process.env.WHATSAPP_API_VERSION || "v21.0";
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
 function getWhatsAppConfig() {

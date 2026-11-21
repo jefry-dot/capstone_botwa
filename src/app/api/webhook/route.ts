@@ -22,6 +22,46 @@ import type {
 import type { StickerCommandType, StickerLogInsert } from "@/types/database";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+// In-Memory TTL Cache (5 menit) untuk menahan retry instan webhook Meta
+const DEDUP_TTL_MS = 5 * 60 * 1000;
+const recentMessageIds = new Map<string, number>();
+
+function isDuplicateInMemory(messageId: string): boolean {
+  const now = Date.now();
+  for (const [id, timestamp] of recentMessageIds.entries()) {
+    if (now - timestamp > DEDUP_TTL_MS) {
+      recentMessageIds.delete(id);
+    }
+  }
+
+  if (recentMessageIds.has(messageId)) {
+    return true;
+  }
+
+  recentMessageIds.set(messageId, now);
+  return false;
+}
+
+async function isDuplicateInSupabase(messageId: string): Promise<boolean> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("sticker_logs")
+      .select("id")
+      .eq("wa_message_id", messageId)
+      .limit(1);
+
+    if (error) {
+      return false;
+    }
+
+    return Boolean(data && data.length > 0);
+  } catch {
+    return false;
+  }
+}
 
 const HELP_MESSAGE = [
   "🎨 *WA AI Sticker Studio — Daftar Perintah*",
@@ -104,6 +144,11 @@ export async function POST(request: NextRequest) {
       }
 
       for (const message of value.messages) {
+        if (!message.id || isDuplicateInMemory(message.id)) {
+          console.info(`[Webhook Dedup] Skipping duplicate message.id in memory: ${message.id}`);
+          continue;
+        }
+
         incomingTasks.push({
           message,
           profileName: contactsMap.get(message.from) ?? "User WA",
@@ -162,9 +207,16 @@ async function processWhatsAppMessage(
   profileName: string
 ) {
   const waId = message.from;
+  const messageId = message.id;
+
+  // Cek layer deduplikasi persisten di Supabase sebelum memproses gambar/AI
+  if (await isDuplicateInSupabase(messageId)) {
+    console.info(`[Webhook Dedup] Skipping duplicate message.id in Supabase: ${messageId}`);
+    return;
+  }
 
   if (message.type === "text") {
-    await handleTextMessage(waId, profileName, message.text?.body ?? "");
+    await handleTextMessage(waId, profileName, messageId, message.text?.body ?? "");
     return;
   }
 
@@ -172,6 +224,7 @@ async function processWhatsAppMessage(
     await handleImageMessage(
       waId,
       profileName,
+      messageId,
       message.image.id,
       message.image.caption ?? ""
     );
@@ -193,6 +246,7 @@ async function processWhatsAppMessage(
 async function handleTextMessage(
   waId: string,
   profileName: string,
+  messageId: string,
   rawText: string
 ) {
   const trimmed = rawText.trim();
@@ -223,6 +277,7 @@ async function handleTextMessage(
 
       await insertStickerLog({
         wa_id: waId,
+        wa_message_id: messageId,
         source: "whatsapp",
         command_type: "quote_chat",
         caption_text: quoteText.slice(0, 200),
@@ -236,6 +291,7 @@ async function handleTextMessage(
 
       await insertStickerLog({
         wa_id: waId,
+        wa_message_id: messageId,
         source: "whatsapp",
         command_type: "quote_chat",
         caption_text: quoteText.slice(0, 200),
@@ -270,6 +326,7 @@ async function handleTextMessage(
 
       await insertStickerLog({
         wa_id: waId,
+        wa_message_id: messageId,
         source: "whatsapp",
         command_type: "brat_text",
         caption_text: bratText.slice(0, 200),
@@ -283,6 +340,7 @@ async function handleTextMessage(
 
       await insertStickerLog({
         wa_id: waId,
+        wa_message_id: messageId,
         source: "whatsapp",
         command_type: "brat_text",
         caption_text: bratText.slice(0, 200),
@@ -306,6 +364,7 @@ async function handleTextMessage(
 async function handleImageMessage(
   waId: string,
   profileName: string,
+  messageId: string,
   incomingMediaId: string,
   rawCaption: string
 ) {
@@ -386,6 +445,7 @@ async function handleImageMessage(
 
     await insertStickerLog({
       wa_id: waId,
+      wa_message_id: messageId,
       source: "whatsapp",
       command_type: commandType,
       caption_text: loggedCaption,
@@ -399,6 +459,7 @@ async function handleImageMessage(
 
     await insertStickerLog({
       wa_id: waId,
+      wa_message_id: messageId,
       source: "whatsapp",
       command_type: commandType,
       caption_text: loggedCaption,

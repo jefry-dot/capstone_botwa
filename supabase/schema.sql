@@ -1,3 +1,9 @@
+-- ============================================================================
+-- Supabase Schema (v2.0.1 - Idempotent & Migration-Safe):
+-- WhatsApp AI Sticker Bot & Web Studio
+-- Jalankan seluruh script SQL ini di Supabase SQL Editor
+-- ============================================================================
+
 -- 1. Tabel User WhatsApp
 CREATE TABLE IF NOT EXISTS public.wa_users (
   wa_id TEXT PRIMARY KEY,
@@ -7,12 +13,23 @@ CREATE TABLE IF NOT EXISTS public.wa_users (
   last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2. Tabel Log Pembuatan Stiker (WA & Web)
+-- 2. Tabel Log Pembuatan Stiker (Mendukung 7 Command Type + Deduplikasi Webhook)
 CREATE TABLE IF NOT EXISTS public.sticker_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   wa_id TEXT REFERENCES public.wa_users(wa_id) ON DELETE SET NULL,
+  wa_message_id TEXT UNIQUE,
   source TEXT NOT NULL CHECK (source IN ('whatsapp', 'web')),
-  command_type TEXT NOT NULL DEFAULT 'standard' CHECK (command_type IN ('standard', 'meme_text', 'crop')),
+  command_type TEXT NOT NULL DEFAULT 'standard' CHECK (
+    command_type IN (
+      'standard',
+      'crop',
+      'meme_text',
+      'ai_meme',
+      'quote_chat',
+      'brat_text',
+      'breaking_news'
+    )
+  ),
   caption_text TEXT,
   status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
   error_message TEXT,
@@ -21,10 +38,33 @@ CREATE TABLE IF NOT EXISTS public.sticker_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Migrasi aman jika tabel sticker_logs sudah terlanjur dibuat dengan skema v1.0
+ALTER TABLE public.sticker_logs
+  ADD COLUMN IF NOT EXISTS wa_message_id TEXT UNIQUE;
+
+ALTER TABLE public.sticker_logs
+  DROP CONSTRAINT IF EXISTS sticker_logs_command_type_check;
+
+ALTER TABLE public.sticker_logs
+  ADD CONSTRAINT sticker_logs_command_type_check CHECK (
+    command_type IN (
+      'standard',
+      'crop',
+      'meme_text',
+      'ai_meme',
+      'quote_chat',
+      'brat_text',
+      'breaking_news'
+    )
+  );
+
+-- Index untuk performa query dashboard & deduplikasi
 CREATE INDEX IF NOT EXISTS idx_sticker_logs_created_at ON public.sticker_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sticker_logs_source ON public.sticker_logs (source);
+CREATE INDEX IF NOT EXISTS idx_sticker_logs_command_type ON public.sticker_logs (command_type);
+CREATE INDEX IF NOT EXISTS idx_sticker_logs_wa_message_id ON public.sticker_logs (wa_message_id);
 
--- 3. Trigger Auto-Increment total stiker user WA
+-- 3. Trigger Otomatis Update Counter User WA
 CREATE OR REPLACE FUNCTION public.increment_user_sticker_count()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -45,11 +85,11 @@ AFTER INSERT ON public.sticker_logs
 FOR EACH ROW
 EXECUTE FUNCTION public.increment_user_sticker_count();
 
--- 4. Row Level Security (tabel mentah diproteksi, diakses via service_role)
+-- 4. Aktifkan Row Level Security (RLS)
 ALTER TABLE public.wa_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sticker_logs ENABLE ROW LEVEL SECURITY;
 
--- 5. View Aman untuk Dashboard Publik (tanpa ekspos nomor WA)
+-- 5. View Agregasi Aman untuk Dashboard Publik (Tanpa Nomor HP)
 CREATE OR REPLACE VIEW public.dashboard_daily_stats AS
 SELECT
   DATE_TRUNC('day', created_at AT TIME ZONE 'Asia/Jakarta')::DATE AS log_date,
@@ -61,6 +101,15 @@ SELECT
 FROM public.sticker_logs
 GROUP BY 1, 2
 ORDER BY 1 DESC;
+
+CREATE OR REPLACE VIEW public.dashboard_feature_stats AS
+SELECT
+  command_type,
+  COUNT(*) FILTER (WHERE status = 'success') AS total_used,
+  ROUND(AVG(processing_time_ms) FILTER (WHERE status = 'success')) AS avg_process_ms
+FROM public.sticker_logs
+GROUP BY command_type
+ORDER BY total_used DESC;
 
 CREATE OR REPLACE VIEW public.dashboard_recent_activity AS
 SELECT

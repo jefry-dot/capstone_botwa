@@ -6,7 +6,7 @@ import { RefreshCw, AlertCircle, Wand2, Clock } from "lucide-react";
 import StatsCards from "@/components/StatsCards";
 import ActivityChart from "@/components/ActivityChart";
 import RecentLogsTable from "@/components/RecentLogsTable";
-import type { DashboardStatsResponse } from "@/app/api/stats/route";
+import type { DashboardStatsResponse } from "@/types/database";
 
 function formatClockWib(isoString: string): string {
   const date = new Date(isoString);
@@ -24,32 +24,31 @@ function formatClockWib(isoString: string): string {
   );
 }
 
+async function fetchDashboardStats(): Promise<DashboardStatsResponse> {
+  const res = await fetch("/api/stats", { cache: "no-store" });
+  if (!res.ok) {
+    const errBody = (await res.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(
+      errBody.error || `Gagal mengambil data statistik (${res.status})`
+    );
+  }
+  return (await res.json()) as DashboardStatsResponse;
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardStatsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadStats = useCallback(async (manual = false) => {
-    if (manual) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
+  const handleManualRefresh = useCallback(async () => {
+    setIsRefreshing(true);
     setError(null);
 
     try {
-      const res = await fetch("/api/stats", { cache: "no-store" });
-      if (!res.ok) {
-        const errBody = (await res.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errBody.error || `Gagal mengambil data statistik (${res.status})`
-        );
-      }
-
-      const json = (await res.json()) as DashboardStatsResponse;
+      const json = await fetchDashboardStats();
       setData(json);
     } catch (err) {
       setError(
@@ -64,8 +63,31 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    void loadStats(false);
-  }, [loadStats]);
+    let active = true;
+
+    fetchDashboardStats()
+      .then((json) => {
+        if (!active) return;
+        setData(json);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Tidak dapat terhubung ke server statistik."
+        );
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -90,7 +112,7 @@ export default function DashboardPage() {
 
           <button
             type="button"
-            onClick={() => void loadStats(true)}
+            onClick={handleManualRefresh}
             disabled={isLoading || isRefreshing}
             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:opacity-60 sm:text-sm"
           >
@@ -124,7 +146,7 @@ export default function DashboardPage() {
           </div>
           <button
             type="button"
-            onClick={() => void loadStats(true)}
+            onClick={handleManualRefresh}
             className="w-fit shrink-0 rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
           >
             Coba Lagi

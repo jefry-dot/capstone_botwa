@@ -2,28 +2,13 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type {
   DailyStatsRow,
+  DashboardStatsResponse,
   FeatureStatsRow,
   RecentActivityRow,
 } from "@/types/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-export interface DashboardStatsResponse {
-  summary: {
-    totalStickers: number;
-    totalSuccess: number;
-    totalFailed: number;
-    successRate: number;
-    avgProcessMs: number;
-    avgSizeKb: number;
-    totalWaUsers: number;
-  };
-  dailyStats: DailyStatsRow[];
-  featureStats: FeatureStatsRow[];
-  recentActivity: RecentActivityRow[];
-  generatedAt: string;
-}
 
 export async function GET() {
   try {

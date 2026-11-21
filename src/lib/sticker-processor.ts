@@ -1,4 +1,19 @@
+import fs from "fs";
+import path from "path";
 import sharp from "sharp";
+
+// Konfigurasi fontconfig lokal agar librsvg/sharp tidak menghasilkan kotak-kotak (□□□) di container Linux Vercel
+const LOCAL_FONTS_DIR = path.join(process.cwd(), "fonts");
+const LOCAL_FONTS_CONF = path.join(LOCAL_FONTS_DIR, "fonts.conf");
+
+if (fs.existsSync(LOCAL_FONTS_CONF)) {
+  if (!process.env.FONTCONFIG_PATH) {
+    process.env.FONTCONFIG_PATH = LOCAL_FONTS_DIR;
+  }
+  if (!process.env.FONTCONFIG_FILE) {
+    process.env.FONTCONFIG_FILE = LOCAL_FONTS_CONF;
+  }
+}
 
 export interface StickerOptions {
   topText?: string;
@@ -170,7 +185,7 @@ function buildMemeSvg(topText?: string, bottomText?: string): Buffer {
     <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
       <style>
         .meme {
-          font-family: Impact, "Arial Black", "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Impact, "Arial Black", "DejaVu Sans", sans-serif;
           font-size: ${fontSize}px;
           font-weight: 900;
           fill: #FFFFFF;
@@ -260,25 +275,25 @@ export async function createQuoteBubbleSticker(
     <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
       <style>
         .avatar-text {
-          font-family: Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Arial, "DejaVu Sans", sans-serif;
           font-size: 24px;
           font-weight: 700;
           fill: #FFFFFF;
         }
         .sender {
-          font-family: Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Arial, "DejaVu Sans", sans-serif;
           font-size: 22px;
           font-weight: 700;
           fill: ${accentColor};
         }
         .msg {
-          font-family: Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Arial, "DejaVu Sans", sans-serif;
           font-size: 24px;
           font-weight: 400;
           fill: #E9EDEF;
         }
         .time {
-          font-family: Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Arial, "DejaVu Sans", sans-serif;
           font-size: 16px;
           fill: #8696A0;
         }
@@ -360,7 +375,7 @@ export async function createBratSticker(
     <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
       <style>
         .brat {
-          font-family: "Arial Narrow", Arial, "Liberation Sans", "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", "Arial Narrow", Arial, "Liberation Sans", "DejaVu Sans", sans-serif;
           font-size: ${fontSize}px;
           font-weight: 500;
           letter-spacing: -1.5px;
@@ -404,33 +419,33 @@ export async function createBreakingNewsSticker(
     <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
       <style>
         .live-text {
-          font-family: Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Arial, "DejaVu Sans", sans-serif;
           font-size: 18px;
           font-weight: 900;
           fill: #FFFFFF;
           letter-spacing: 1px;
         }
         .badge-title {
-          font-family: "Arial Black", Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", "Arial Black", Arial, "DejaVu Sans", sans-serif;
           font-size: 19px;
           font-weight: 900;
           fill: #FFFFFF;
           letter-spacing: 0.8px;
         }
         .time-tag {
-          font-family: Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Arial, "DejaVu Sans", sans-serif;
           font-size: 16px;
           font-weight: 700;
           fill: #111827;
         }
         .headline {
-          font-family: "Arial Black", Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", "Arial Black", Arial, "DejaVu Sans", sans-serif;
           font-size: 23px;
           font-weight: 900;
           fill: #FFFFFF;
         }
         .ticker {
-          font-family: Arial, "DejaVu Sans", sans-serif;
+          font-family: "Noto Sans", Arial, "DejaVu Sans", sans-serif;
           font-size: 13px;
           font-weight: 700;
           fill: #FDE047;

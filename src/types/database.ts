@@ -21,6 +21,7 @@ export interface WaUserRow {
 
 export interface StickerLogInsert {
   wa_id?: string | null;
+  wa_message_id?: string | null;
   source: StickerSource;
   command_type: StickerCommandType;
   caption_text?: string | null;
@@ -54,4 +55,20 @@ export interface RecentActivityRow {
   processing_time_ms: number | null;
   file_size_kb: number | null;
   created_at: string;
+}
+
+export interface DashboardStatsResponse {
+  summary: {
+    totalStickers: number;
+    totalSuccess: number;
+    totalFailed: number;
+    successRate: number;
+    avgProcessMs: number;
+    avgSizeKb: number;
+    totalWaUsers: number;
+  };
+  dailyStats: DailyStatsRow[];
+  featureStats: FeatureStatsRow[];
+  recentActivity: RecentActivityRow[];
+  generatedAt: string;
 }
