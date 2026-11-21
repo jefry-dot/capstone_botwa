@@ -3,6 +3,12 @@ import { verifyMetaSignature } from "@/lib/signature";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateAiMemeCaption, type AiMemeMode } from "@/lib/gemini";
 import {
+  getBotSettings,
+  isWaUserBlocked,
+  consumeAiQuota,
+  type BotSettings,
+} from "@/lib/bot-guard";
+import {
   processImageToSticker,
   createQuoteBubbleSticker,
   createBratSticker,
@@ -127,7 +133,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "ignored" }, { status: 200 });
   }
 
-  // Kumpulkan semua pesan masuk (abaikan event statuses seperti sent/delivered/read)
   const incomingTasks: Array<{
     message: WhatsAppIncomingMessage;
     profileName: string;
@@ -145,7 +150,9 @@ export async function POST(request: NextRequest) {
 
       for (const message of value.messages) {
         if (!message.id || isDuplicateInMemory(message.id)) {
-          console.info(`[Webhook Dedup] Skipping duplicate message.id in memory: ${message.id}`);
+          console.info(
+            `[Webhook Dedup] Skipping duplicate message.id in memory: ${message.id}`
+          );
           continue;
         }
 
@@ -200,7 +207,7 @@ async function insertStickerLog(log: StickerLogInsert) {
 }
 
 // ============================================================================
-// Router Utama Pesan Masuk (Teks & Gambar)
+// Router Utama Pesan Masuk (Teks & Gambar + Guard RBAC/Moderasi)
 // ============================================================================
 async function processWhatsAppMessage(
   message: WhatsAppIncomingMessage,
@@ -209,14 +216,39 @@ async function processWhatsAppMessage(
   const waId = message.from;
   const messageId = message.id;
 
-  // Cek layer deduplikasi persisten di Supabase sebelum memproses gambar/AI
+  // 1. Deduplikasi persisten di Supabase
   if (await isDuplicateInSupabase(messageId)) {
-    console.info(`[Webhook Dedup] Skipping duplicate message.id in Supabase: ${messageId}`);
+    console.info(
+      `[Webhook Dedup] Skipping duplicate message.id in Supabase: ${messageId}`
+    );
+    return;
+  }
+
+  // 2. Cek apakah nomor WA pengirim diblokir oleh Admin (silent drop agar hemat kuota API)
+  if (await isWaUserBlocked(waId)) {
+    console.info(`[Webhook Guard] Ignoring message from blocked user: ${waId}`);
+    return;
+  }
+
+  // 3. Cek Maintenance Mode global dari bot_settings
+  const settings = await getBotSettings();
+  if (settings.maintenance_mode) {
+    if (message.type !== "sticker") {
+      await sendTextMessage(
+        waId,
+        `🛠️ *Mode Pemeliharaan*\n${settings.maintenance_message}`
+      );
+    }
     return;
   }
 
   if (message.type === "text") {
-    await handleTextMessage(waId, profileName, messageId, message.text?.body ?? "");
+    await handleTextMessage(
+      waId,
+      profileName,
+      messageId,
+      message.text?.body ?? ""
+    );
     return;
   }
 
@@ -226,12 +258,12 @@ async function processWhatsAppMessage(
       profileName,
       messageId,
       message.image.id,
-      message.image.caption ?? ""
+      message.image.caption ?? "",
+      settings
     );
     return;
   }
 
-  // Abaikan stiker/audio/video yang tidak didukung dengan pesan singkat
   if (message.type !== "sticker") {
     await sendTextMessage(
       waId,
@@ -252,7 +284,6 @@ async function handleTextMessage(
   const trimmed = rawText.trim();
   const lower = trimmed.toLowerCase();
 
-  // Mode 4: Fake Chat Quote Bubble (/qc <teks>)
   if (lower === "/qc" || lower.startsWith("/qc ")) {
     const quoteText = trimmed.slice(3).trim();
     if (!quoteText) {
@@ -305,7 +336,6 @@ async function handleTextMessage(
     return;
   }
 
-  // Mode 5A: Brat Typography (/brat <teks>)
   if (lower === "/brat" || lower.startsWith("/brat ")) {
     const bratText = trimmed.slice(5).trim();
     if (!bratText) {
@@ -354,7 +384,6 @@ async function handleTextMessage(
     return;
   }
 
-  // Default (/help, menu, sapaan, dll.)
   await sendTextMessage(waId, HELP_MESSAGE);
 }
 
@@ -366,12 +395,43 @@ async function handleImageMessage(
   profileName: string,
   messageId: string,
   incomingMediaId: string,
-  rawCaption: string
+  rawCaption: string,
+  settings: BotSettings
 ) {
   await upsertWaUser(waId, profileName);
 
   const caption = rawCaption.trim();
   const lower = caption.toLowerCase();
+
+  const isAiCommand =
+    lower === "/aimeme" ||
+    lower.startsWith("/aimeme ") ||
+    lower === "/roast" ||
+    lower.startsWith("/roast ");
+
+  // Guard khusus AI Vision sebelum download gambar dari Meta (hemat bandwidth & kuota Gemini)
+  if (isAiCommand) {
+    if (!settings.ai_meme_enabled) {
+      await sendTextMessage(
+        waId,
+        "Fitur AI Meme/Roast (`/aimeme`, `/roast`) sedang dinonaktifkan sementara oleh Admin. Kamu tetap bisa pakai mode `/stiker`, `/crop`, `/news`, `/qc`, atau `/brat` ya!"
+      );
+      return;
+    }
+
+    const quota = await consumeAiQuota(
+      `wa:${waId}`,
+      settings.daily_ai_limit_per_user
+    );
+
+    if (!quota.allowed) {
+      await sendTextMessage(
+        waId,
+        `Kuota AI Vision harian kamu sudah habis (maksimal ${quota.limit}x/hari). Coba lagi besok ya, atau gunakan mode non-AI seperti \`/stiker\`, \`/news\`, \`/qc\`, dan \`/brat\`!`
+      );
+      return;
+    }
+  }
 
   let commandType: StickerCommandType = "standard";
   let loggedCaption: string | null = caption ? caption.slice(0, 200) : null;
@@ -381,13 +441,7 @@ async function handleImageMessage(
     const imageBuffer = await downloadWhatsAppMedia(incomingMediaId);
     let result: StickerResult;
 
-    if (
-      lower === "/aimeme" ||
-      lower.startsWith("/aimeme ") ||
-      lower === "/roast" ||
-      lower.startsWith("/roast ")
-    ) {
-      // Mode 3: AI Vision Auto-Meme & Roast
+    if (isAiCommand) {
       commandType = "ai_meme";
       const aiMode: AiMemeMode = lower.startsWith("/roast")
         ? "roast"
@@ -405,7 +459,6 @@ async function handleImageMessage(
         mode: "contain",
       });
     } else if (lower === "/news" || lower.startsWith("/news ")) {
-      // Mode 5B: Live Breaking News Frame
       commandType = "breaking_news";
       const headline =
         caption.slice(5).trim() || "BERITA TERKINI HARI INI";
@@ -413,11 +466,9 @@ async function handleImageMessage(
 
       result = await createBreakingNewsSticker(imageBuffer, { headline });
     } else if (lower === "/crop" || lower.startsWith("/crop ")) {
-      // Mode 1B: Smart Crop 1:1
       commandType = "crop";
       result = await processImageToSticker(imageBuffer, { mode: "cover" });
     } else if (caption.includes("|")) {
-      // Mode 2: Classic Meme Generator (/stiker Atas | Bawah)
       commandType = "meme_text";
       const cleaned = caption.replace(/^\/(stiker|meme)\s*/i, "");
       const [topText = "", bottomText = ""] = cleaned
@@ -430,7 +481,6 @@ async function handleImageMessage(
         mode: "contain",
       });
     } else {
-      // Mode 1A: Standard Sticker
       commandType = "standard";
       result = await processImageToSticker(imageBuffer, { mode: "contain" });
     }

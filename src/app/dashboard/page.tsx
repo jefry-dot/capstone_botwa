@@ -2,11 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { RefreshCw, AlertCircle, Wand2, Clock } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  RefreshCw,
+  AlertCircle,
+  Wand2,
+  Clock,
+  BarChart3,
+  SlidersHorizontal,
+  Users,
+  ShieldCheck,
+} from "lucide-react";
 import StatsCards from "@/components/StatsCards";
 import ActivityChart from "@/components/ActivityChart";
 import RecentLogsTable from "@/components/RecentLogsTable";
+import AdminBotControls from "@/components/AdminBotControls";
+import AdminUserTable from "@/components/AdminUserTable";
 import type { DashboardStatsResponse } from "@/types/database";
+
+type DashboardTab = "overview" | "controls" | "users";
 
 function formatClockWib(isoString: string): string {
   const date = new Date(isoString);
@@ -24,8 +38,18 @@ function formatClockWib(isoString: string): string {
   );
 }
 
+class UnauthorizedError extends Error {
+  constructor() {
+    super("Sesi admin telah berakhir. Mengalihkan ke halaman login...");
+    this.name = "UnauthorizedError";
+  }
+}
+
 async function fetchDashboardStats(): Promise<DashboardStatsResponse> {
   const res = await fetch("/api/stats", { cache: "no-store" });
+  if (res.status === 401 || res.status === 403) {
+    throw new UnauthorizedError();
+  }
   if (!res.ok) {
     const errBody = (await res.json().catch(() => ({}))) as {
       error?: string;
@@ -38,10 +62,18 @@ async function fetchDashboardStats(): Promise<DashboardStatsResponse> {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+
+  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [data, setData] = useState<DashboardStatsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleUnauthorized = useCallback(() => {
+    router.replace("/admin/login?next=/dashboard");
+    router.refresh();
+  }, [router]);
 
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -51,6 +83,10 @@ export default function DashboardPage() {
       const json = await fetchDashboardStats();
       setData(json);
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        handleUnauthorized();
+        return;
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -60,7 +96,7 @@ export default function DashboardPage() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [handleUnauthorized]);
 
   useEffect(() => {
     let active = true;
@@ -73,6 +109,10 @@ export default function DashboardPage() {
       })
       .catch((err: unknown) => {
         if (!active) return;
+        if (err instanceof UnauthorizedError) {
+          handleUnauthorized();
+          return;
+        }
         setError(
           err instanceof Error
             ? err.message
@@ -87,104 +127,157 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [handleUnauthorized]);
+
+  const tabs: Array<{
+    id: DashboardTab;
+    label: string;
+    icon: typeof BarChart3;
+  }> = [
+    { id: "overview", label: "Overview Telemetri", icon: BarChart3 },
+    { id: "controls", label: "Kontrol Bot & Export", icon: SlidersHorizontal },
+    { id: "users", label: "Moderasi User WA", icon: Users },
+  ];
 
   return (
     <div className="space-y-6">
       {/* Header Dashboard */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
+          <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Admin Control Center • RBAC Protected</span>
+          </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-            Live Telemetry Dashboard
+            Live Telemetry &amp; Bot Management
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Monitoring performa engine stiker, tren kanal WhatsApp vs Web, dan popularitas fitur secara real-time.
+            Monitoring performa engine stiker, kontrol fitur AI, moderasi
+            pengguna WA, dan ekspor laporan.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {data?.generatedAt && (
+          {data?.generatedAt && activeTab === "overview" && (
             <span className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
               <Clock className="h-3.5 w-3.5" />
               Update: {formatClockWib(data.generatedAt)}
             </span>
           )}
 
-          <button
-            type="button"
-            onClick={handleManualRefresh}
-            disabled={isLoading || isRefreshing}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:opacity-60 sm:text-sm"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-            <span>{isRefreshing ? "Memuat..." : "Refresh Data"}</span>
-          </button>
+          {activeTab === "overview" && (
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={isLoading || isRefreshing}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:opacity-60 sm:text-sm"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+              />
+              <span>{isRefreshing ? "Memuat..." : "Refresh Data"}</span>
+            </button>
+          )}
 
           <Link
             href="/"
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-xs transition-colors hover:bg-slate-100 sm:text-sm"
           >
             <Wand2 className="h-4 w-4 text-emerald-600" />
-            <span>Buat Stiker</span>
+            <span>Web Studio</span>
           </Link>
         </div>
       </div>
 
-      {/* Error State */}
-      {error && (
-        <div className="flex flex-col justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 sm:flex-row sm:items-center">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-            <div>
-              <p className="font-bold">Gagal memuat data dashboard</p>
-              <p className="text-xs text-red-700">
-                {error} — Pastikan schema SQL Supabase sudah dijalankan dan variabel environment sudah terisi.
-              </p>
+      {/* Tab Navigasi Admin Panel */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        {tabs.map(({ id, label, icon: Icon }) => {
+          const isActive = activeTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id)}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all sm:text-sm ${
+                isActive
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab 1: Overview Telemetri */}
+      {activeTab === "overview" && (
+        <>
+          {error && (
+            <div className="flex flex-col justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 sm:flex-row sm:items-center">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                <div>
+                  <p className="font-bold">Gagal memuat data dashboard</p>
+                  <p className="text-xs text-red-700">
+                    {error} — Pastikan schema SQL Supabase sudah dijalankan dan
+                    variabel environment sudah terisi.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                className="w-fit shrink-0 rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+              >
+                Coba Lagi
+              </button>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleManualRefresh}
-            className="w-fit shrink-0 rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-          >
-            Coba Lagi
-          </button>
-        </div>
+          )}
+
+          {isLoading && !data ? (
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map((n) => (
+                  <div
+                    key={n}
+                    className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white p-5"
+                  >
+                    <div className="h-3 w-24 rounded bg-slate-200" />
+                    <div className="mt-4 h-7 w-20 rounded bg-slate-200" />
+                    <div className="mt-4 h-3 w-36 rounded bg-slate-100" />
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-6 lg:grid-cols-12">
+                <div className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white lg:col-span-7" />
+                <div className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white lg:col-span-5" />
+              </div>
+              <div className="h-64 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+            </div>
+          ) : data ? (
+            <>
+              <StatsCards summary={data.summary} />
+              <ActivityChart
+                dailyStats={data.dailyStats}
+                featureStats={data.featureStats}
+              />
+              <RecentLogsTable logs={data.recentActivity} />
+            </>
+          ) : null}
+        </>
       )}
 
-      {/* Initial Loading Skeleton */}
-      {isLoading && !data ? (
-        <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((n) => (
-              <div
-                key={n}
-                className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white p-5"
-              >
-                <div className="h-3 w-24 rounded bg-slate-200" />
-                <div className="mt-4 h-7 w-20 rounded bg-slate-200" />
-                <div className="mt-4 h-3 w-36 rounded bg-slate-100" />
-              </div>
-            ))}
-          </div>
-          <div className="grid gap-6 lg:grid-cols-12">
-            <div className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white lg:col-span-7" />
-            <div className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white lg:col-span-5" />
-          </div>
-          <div className="h-64 animate-pulse rounded-2xl border border-slate-200 bg-white" />
-        </div>
-      ) : data ? (
-        <>
-          <StatsCards summary={data.summary} />
-          <ActivityChart
-            dailyStats={data.dailyStats}
-            featureStats={data.featureStats}
-          />
-          <RecentLogsTable logs={data.recentActivity} />
-        </>
-      ) : null}
+      {/* Tab 2: Kontrol Bot & Export CSV */}
+      {activeTab === "controls" && (
+        <AdminBotControls onUnauthorized={handleUnauthorized} />
+      )}
+
+      {/* Tab 3: Moderasi Pengguna WA */}
+      {activeTab === "users" && (
+        <AdminUserTable onUnauthorized={handleUnauthorized} />
+      )}
     </div>
   );
 }

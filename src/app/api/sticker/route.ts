@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateAiMemeCaption, type AiMemeMode } from "@/lib/gemini";
 import {
+  getBotSettings,
+  getWebClientRateKey,
+  consumeAiQuota,
+} from "@/lib/bot-guard";
+import {
   processImageToSticker,
   createQuoteBubbleSticker,
   createBratSticker,
@@ -46,6 +51,19 @@ export async function POST(request: NextRequest) {
   let captionLog: string | null = null;
 
   try {
+    // 1. Cek konfigurasi live bot (Maintenance Mode)
+    const settings = await getBotSettings();
+    if (settings.maintenance_mode) {
+      return NextResponse.json(
+        {
+          error:
+            settings.maintenance_message ||
+            "Layanan sedang dalam pemeliharaan sementara.",
+        },
+        { status: 503 }
+      );
+    }
+
     const formData = await request.formData();
     const rawCommand = String(formData.get("commandType") ?? "standard").trim();
 
@@ -58,9 +76,40 @@ export async function POST(request: NextRequest) {
 
     commandType = rawCommand as StickerCommandType;
 
+    // 2. Guard khusus fitur AI Vision (toggle admin & kuota harian per IP)
+    let aiRemainingHeader: string | null = null;
+    if (commandType === "ai_meme") {
+      if (!settings.ai_meme_enabled) {
+        return NextResponse.json(
+          {
+            error:
+              "Fitur AI Meme / Roast sedang dinonaktifkan sementara oleh Admin. Silakan gunakan mode lain.",
+          },
+          { status: 503 }
+        );
+      }
+
+      const rateKey = getWebClientRateKey(request);
+      const quota = await consumeAiQuota(
+        rateKey,
+        settings.daily_web_ai_limit_per_ip
+      );
+
+      if (!quota.allowed) {
+        return NextResponse.json(
+          {
+            error: `Kuota AI Vision harian kamu sudah habis (maksimal ${quota.limit}x/hari per perangkat). Coba lagi besok atau gunakan mode Foto, Quote Chat, Brat, atau Breaking News.`,
+          },
+          { status: 429 }
+        );
+      }
+
+      aiRemainingHeader = String(quota.remaining);
+    }
+
     let imageBuffer: Buffer | null = null;
 
-    // Validasi file gambar jika mode membutuhkan foto
+    // 3. Validasi file gambar jika mode membutuhkan foto
     if (!TEXT_ONLY_COMMANDS.has(commandType)) {
       const file = formData.get("file");
       if (!(file instanceof File) || file.size === 0) {
@@ -211,13 +260,17 @@ export async function POST(request: NextRequest) {
     if (aiGeneratedCaptionHeader) {
       headers["X-Ai-Caption"] = aiGeneratedCaptionHeader;
     }
+    if (aiRemainingHeader !== null) {
+      headers["X-Ai-Quota-Remaining"] = aiRemainingHeader;
+    }
 
     return new NextResponse(new Uint8Array(result.buffer), {
       status: 200,
       headers,
     });
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : "Terjadi kesalahan server.";
+    const errMsg =
+      err instanceof Error ? err.message : "Terjadi kesalahan server.";
     console.error(`[API /api/sticker - ${commandType}] Error:`, errMsg);
 
     await logWebSticker({

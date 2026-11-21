@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminApi } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type {
   DailyStatsRow,
@@ -11,6 +12,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const auth = await requireAdminApi();
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   try {
     const supabase = getSupabaseAdmin();
 

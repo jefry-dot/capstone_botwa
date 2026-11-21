@@ -1,8 +1,6 @@
-import Link from "next/link";
 import {
   Sparkles,
   MessageCircle,
-  BarChart3,
   Image as ImageIcon,
   MessageSquareQuote,
   Type,
@@ -74,14 +72,6 @@ export default function HomePage() {
             Mendukung AI Vision Auto-Meme, Fake Chat Bubble, Brat Text, hingga frame LIVE Breaking News.
           </p>
         </div>
-
-        <Link
-          href="/dashboard"
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:bg-slate-100 hover:text-slate-900"
-        >
-          <BarChart3 className="h-4 w-4 text-emerald-600" />
-          <span>Lihat Telemetry Dashboard</span>
-        </Link>
       </section>
 
       {/* Interactive 5-Mode Studio */}
