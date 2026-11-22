@@ -166,11 +166,16 @@ export async function POST(request: NextRequest) {
 
   if (incomingTasks.length > 0) {
     after(async () => {
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         incomingTasks.map(({ message, profileName }) =>
           processWhatsAppMessage(message, profileName)
         )
       );
+      for (const res of results) {
+        if (res.status === "rejected") {
+          console.error("[Webhook after()] Task failed:", res.reason);
+        }
+      }
     });
   }
 
@@ -215,6 +220,10 @@ async function processWhatsAppMessage(
 ) {
   const waId = message.from;
   const messageId = message.id;
+
+  console.info(
+    `[Webhook] Processing message id=${messageId} from=${waId} type=${message.type}`
+  );
 
   // 1. Deduplikasi persisten di Supabase
   if (await isDuplicateInSupabase(messageId)) {
