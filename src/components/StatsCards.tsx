@@ -21,28 +21,28 @@ export default function StatsCards({ summary }: StatsCardsProps) {
       value: summary.totalStickers.toLocaleString("id-ID"),
       subtitle: `${summary.totalSuccess.toLocaleString("id-ID")} sukses • ${summary.totalFailed.toLocaleString("id-ID")} gagal`,
       icon: Sparkles,
-      iconClass: "bg-emerald-50 text-emerald-600",
+      iconClass: "bg-[#B9F32B] text-[#161614]",
     },
     {
       title: "Success Rate",
       value: `${summary.successRate}%`,
       subtitle: "Tingkat keberhasilan render WebP",
       icon: CheckCircle2,
-      iconClass: "bg-blue-50 text-blue-600",
+      iconClass: "bg-[#FFD646] text-[#161614]",
     },
     {
       title: "Rata-rata Latency",
       value: `${summary.avgProcessMs.toLocaleString("id-ID")} ms`,
       subtitle: `Rata-rata ukuran ${summary.avgSizeKb} KB (< 100 KB)`,
       icon: Gauge,
-      iconClass: "bg-amber-50 text-amber-600",
+      iconClass: "bg-[#EFE7D8] text-[#161614]",
     },
     {
       title: "User WhatsApp Aktif",
       value: summary.totalWaUsers.toLocaleString("id-ID"),
       subtitle: "Pengguna unik terdaftar di bot",
       icon: Users,
-      iconClass: "bg-violet-50 text-violet-600",
+      iconClass: "bg-[#161614] text-[#F5F0E6]",
     },
   ];
 
@@ -51,26 +51,25 @@ export default function StatsCards({ summary }: StatsCardsProps) {
       {cards.map((card) => {
         const Icon = card.icon;
         return (
-          <div
-            key={card.title}
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs"
-          >
+          <div key={card.title} className="zine-card-sm p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold text-slate-500">
+                <p className="font-mono text-[11px] font-bold uppercase text-[#5C584F]">
                   {card.title}
                 </p>
-                <p className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+                <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[#161614]">
                   {card.value}
                 </p>
               </div>
               <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${card.iconClass}`}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center border-2 border-[#161614] ${card.iconClass}`}
               >
                 <Icon className="h-5 w-5" />
               </div>
             </div>
-            <p className="mt-3 text-xs text-slate-500">{card.subtitle}</p>
+            <p className="mt-3 font-mono text-[11px] text-[#5C584F]">
+              {card.subtitle}
+            </p>
           </div>
         );
       })}

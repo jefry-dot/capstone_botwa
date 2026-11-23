@@ -1,0 +1,8 @@
+
+> capstone-botwa@2.0.0 bot
+> npm --prefix wa-bot run start
+
+
+> capstone-botwa-baileys-worker@1.0.0 start
+> tsx --tsconfig ../tsconfig.json index.ts
+

@@ -1,1 +1,59 @@
 @import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-jakarta), "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-display: var(--font-space), "Space Grotesk", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  --paper: #f5f0e6;
+  --card: #fffdf7;
+  --kraft: #ebe3d3;
+  --ink: #161614;
+  --lime: #b9f32b;
+  --yellow: #ffd646;
+  --red: #eb3b2e;
+}
+
+body {
+  background-color: var(--paper);
+  color: var(--ink);
+  background-image: radial-gradient(rgba(22, 22, 20, 0.13) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@layer components {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .zine-card {
+    background-color: var(--card);
+    border: 2px solid var(--ink);
+    box-shadow: 4px 4px 0px var(--ink);
+  }
+
+  .zine-card-sm {
+    background-color: var(--card);
+    border: 2px solid var(--ink);
+    box-shadow: 3px 3px 0px var(--ink);
+  }
+
+  .zine-btn {
+    border: 2px solid var(--ink);
+    box-shadow: 3px 3px 0px var(--ink);
+    transition: transform 120ms ease, box-shadow 120ms ease,
+      background-color 120ms ease;
+  }
+
+  .zine-btn:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0px var(--ink);
+  }
+
+  .zine-btn:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0px var(--ink);
+  }
+}

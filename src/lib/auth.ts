@@ -86,6 +86,15 @@ export async function getCurrentAdmin(): Promise<AdminSession | null> {
       role: profile.role,
     };
   } catch (err) {
+    // Abaikan sinyal normal Next.js saat build memetakan route dinamis yang memakai cookies()
+    if (
+      err &&
+      typeof err === "object" &&
+      "digest" in err &&
+      (err as { digest?: string }).digest === "DYNAMIC_SERVER_USAGE"
+    ) {
+      return null;
+    }
     console.error("[Auth] Failed to resolve current admin:", err);
     return null;
   }

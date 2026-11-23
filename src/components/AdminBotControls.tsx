@@ -34,7 +34,6 @@ export default function AdminBotControls({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Filter untuk Export CSV
   const [exportSource, setExportSource] = useState<"all" | "whatsapp" | "web">(
     "all"
   );
@@ -134,8 +133,8 @@ export default function AdminBotControls({
   if (isLoading) {
     return (
       <div className="grid gap-6 lg:grid-cols-12">
-        <div className="h-96 animate-pulse rounded-2xl border border-slate-200 bg-white lg:col-span-8" />
-        <div className="h-72 animate-pulse rounded-2xl border border-slate-200 bg-white lg:col-span-4" />
+        <div className="zine-card h-96 animate-pulse lg:col-span-8" />
+        <div className="zine-card h-72 animate-pulse lg:col-span-4" />
       </div>
     );
   }
@@ -145,33 +144,33 @@ export default function AdminBotControls({
       {/* Kiri: Form Konfigurasi Live Bot */}
       <form
         onSubmit={handleSave}
-        className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6 lg:col-span-8"
+        className="zine-card space-y-6 p-5 sm:p-6 lg:col-span-8"
       >
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between border-b-2 border-[#161614] pb-4">
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="font-display text-base font-bold text-[#161614]">
               Kontrol Operasional Bot &amp; Kuota AI
             </h2>
-            <p className="text-xs text-slate-500">
-              Perubahan berlaku instan pada Webhook WhatsApp dan Web Sticker
-              Studio tanpa redeploy.
+            <p className="font-mono text-[11px] text-[#5C584F]">
+              Perubahan berlaku instan pada Bot WhatsApp &amp; Web Studio tanpa
+              redeploy.
             </p>
           </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+          <div className="flex h-9 w-9 items-center justify-center border-2 border-[#161614] bg-[#FFD646] text-[#161614]">
             <SlidersHorizontal className="h-4 w-4" />
           </div>
         </div>
 
         {error && (
-          <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-700">
+          <div className="flex items-start gap-2.5 border-2 border-[#161614] bg-[#EB3B2E] p-3.5 text-xs font-medium text-white shadow-[2px_2px_0_#161614]">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-800">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+          <div className="flex items-start gap-2.5 border-2 border-[#161614] bg-[#B9F32B] p-3.5 text-xs font-bold text-[#161614] shadow-[2px_2px_0_#161614]">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{successMsg}</span>
           </div>
         )}
@@ -180,24 +179,17 @@ export default function AdminBotControls({
           <>
             {/* Toggle Switches */}
             <div className="grid gap-4 sm:grid-cols-2">
-              {/* Toggle Maintenance Mode */}
               <div
-                className={`rounded-xl border p-4 transition-colors ${
+                className={`border-2 border-[#161614] p-4 transition-colors ${
                   settings.maintenance_mode
-                    ? "border-amber-300 bg-amber-50/70"
-                    : "border-slate-200 bg-slate-50/60"
+                    ? "bg-[#FFD646] shadow-[3px_3px_0_#161614]"
+                    : "bg-[#F5F0E6]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <Wrench
-                      className={`h-4 w-4 ${
-                        settings.maintenance_mode
-                          ? "text-amber-600"
-                          : "text-slate-500"
-                      }`}
-                    />
-                    <span className="text-sm font-bold text-slate-900">
+                    <Wrench className="h-4 w-4 text-[#161614]" />
+                    <span className="font-display text-sm font-bold text-[#161614]">
                       Maintenance Mode
                     </span>
                   </div>
@@ -215,45 +207,36 @@ export default function AdminBotControls({
                           : prev
                       )
                     }
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
-                      settings.maintenance_mode
-                        ? "bg-amber-500"
-                        : "bg-slate-300"
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer border-2 border-[#161614] transition-colors ${
+                      settings.maintenance_mode ? "bg-[#161614]" : "bg-[#FFFDF7]"
                     }`}
                   >
                     <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition-transform ${
+                      className={`mt-0.5 inline-block h-4 w-4 transform border border-[#161614] transition-transform ${
                         settings.maintenance_mode
-                          ? "translate-x-5.5"
-                          : "translate-x-0.5"
-                      } mt-0.5`}
+                          ? "translate-x-5 bg-[#FFD646]"
+                          : "translate-x-0.5 bg-[#161614]"
+                      }`}
                     />
                   </button>
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                <p className="mt-2 text-xs leading-relaxed text-[#3B3934]">
                   Jeda sementara seluruh pembuatan stiker di WA &amp; Web dan
                   tampilkan pesan pemeliharaan.
                 </p>
               </div>
 
-              {/* Toggle AI Vision */}
               <div
-                className={`rounded-xl border p-4 transition-colors ${
+                className={`border-2 border-[#161614] p-4 transition-colors ${
                   settings.ai_meme_enabled
-                    ? "border-emerald-200 bg-emerald-50/60"
-                    : "border-slate-200 bg-slate-50/60"
+                    ? "bg-[#B9F32B]/45 shadow-[3px_3px_0_#161614]"
+                    : "bg-[#F5F0E6]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <Sparkles
-                      className={`h-4 w-4 ${
-                        settings.ai_meme_enabled
-                          ? "text-emerald-600"
-                          : "text-slate-400"
-                      }`}
-                    />
-                    <span className="text-sm font-bold text-slate-900">
+                    <Sparkles className="h-4 w-4 text-[#161614]" />
+                    <span className="font-display text-sm font-bold text-[#161614]">
                       AI Vision (/aimeme)
                     </span>
                   </div>
@@ -271,22 +254,20 @@ export default function AdminBotControls({
                           : prev
                       )
                     }
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
-                      settings.ai_meme_enabled
-                        ? "bg-emerald-600"
-                        : "bg-slate-300"
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer border-2 border-[#161614] transition-colors ${
+                      settings.ai_meme_enabled ? "bg-[#161614]" : "bg-[#FFFDF7]"
                     }`}
                   >
                     <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition-transform ${
+                      className={`mt-0.5 inline-block h-4 w-4 transform border border-[#161614] transition-transform ${
                         settings.ai_meme_enabled
-                          ? "translate-x-5.5"
-                          : "translate-x-0.5"
-                      } mt-0.5`}
+                          ? "translate-x-5 bg-[#B9F32B]"
+                          : "translate-x-0.5 bg-[#161614]"
+                      }`}
                     />
                   </button>
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                <p className="mt-2 text-xs leading-relaxed text-[#3B3934]">
                   Aktifkan atau matikan fitur Gemini Vision (`/aimeme` &amp;
                   `/roast`) untuk menghemat kuota API.
                 </p>
@@ -298,9 +279,9 @@ export default function AdminBotControls({
               <div>
                 <label
                   htmlFor="limit-wa-ai"
-                  className="mb-1.5 block text-xs font-semibold text-slate-700"
+                  className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
                 >
-                  Limit AI Harian per User WhatsApp
+                  Limit AI Harian per User WA
                 </label>
                 <input
                   id="limit-wa-ai"
@@ -321,9 +302,9 @@ export default function AdminBotControls({
                         : prev
                     )
                   }
-                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-slate-900 focus:outline-none"
+                  className="w-full border-2 border-[#161614] bg-[#FFFDF7] px-3.5 py-2.5 font-mono text-sm text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
                 />
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 font-mono text-[11px] text-[#5C584F]">
                   Reset otomatis tiap pukul 00:00 WIB.
                 </p>
               </div>
@@ -331,9 +312,9 @@ export default function AdminBotControls({
               <div>
                 <label
                   htmlFor="limit-web-ai"
-                  className="mb-1.5 block text-xs font-semibold text-slate-700"
+                  className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
                 >
-                  Limit AI Harian per IP Web Studio
+                  Limit AI Harian per IP Web
                 </label>
                 <input
                   id="limit-web-ai"
@@ -354,9 +335,9 @@ export default function AdminBotControls({
                         : prev
                     )
                   }
-                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-slate-900 focus:outline-none"
+                  className="w-full border-2 border-[#161614] bg-[#FFFDF7] px-3.5 py-2.5 font-mono text-sm text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
                 />
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 font-mono text-[11px] text-[#5C584F]">
                   Mencegah spam request Gemini dari pengunjung anonim.
                 </p>
               </div>
@@ -366,7 +347,7 @@ export default function AdminBotControls({
             <div>
               <label
                 htmlFor="maintenance-msg"
-                className="mb-1.5 block text-xs font-semibold text-slate-700"
+                className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
               >
                 Pesan Saat Maintenance Mode Aktif
               </label>
@@ -382,15 +363,15 @@ export default function AdminBotControls({
                       : prev
                   )
                 }
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-slate-900 focus:outline-none"
+                className="w-full border-2 border-[#161614] bg-[#FFFDF7] px-3.5 py-2.5 text-sm text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
               />
             </div>
 
-            <div className="flex justify-end border-t border-slate-100 pt-4">
+            <div className="flex justify-end border-t-2 border-dashed border-[#161614]/25 pt-4">
               <button
                 type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:opacity-60"
+                className="zine-btn inline-flex cursor-pointer items-center gap-2 bg-[#161614] px-5 py-2.5 font-display text-sm font-bold text-[#F5F0E6] disabled:opacity-60"
               >
                 {isSaving ? (
                   <>
@@ -410,19 +391,18 @@ export default function AdminBotControls({
       </form>
 
       {/* Kanan: Panel Export Laporan CSV */}
-      <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6 lg:col-span-4">
+      <div className="zine-card flex flex-col justify-between p-5 sm:p-6 lg:col-span-4">
         <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center justify-between border-b-2 border-[#161614] pb-4">
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="font-display text-base font-bold text-[#161614]">
                 Ekspor Laporan CSV
               </h2>
-              <p className="text-xs text-slate-500">
-                Unduh data log telemetri untuk lampiran laporan &amp; analisis
-                sidang.
+              <p className="font-mono text-[11px] text-[#5C584F]">
+                Unduh data telemetri untuk lampiran laporan &amp; sidang.
               </p>
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+            <div className="flex h-9 w-9 items-center justify-center border-2 border-[#161614] bg-[#B9F32B] text-[#161614]">
               <Download className="h-4 w-4" />
             </div>
           </div>
@@ -430,7 +410,7 @@ export default function AdminBotControls({
           <div>
             <label
               htmlFor="export-source"
-              className="mb-1.5 block text-xs font-semibold text-slate-700"
+              className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
             >
               Filter Kanal
             </label>
@@ -440,7 +420,7 @@ export default function AdminBotControls({
               onChange={(e) =>
                 setExportSource(e.target.value as "all" | "whatsapp" | "web")
               }
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-slate-900 focus:outline-none"
+              className="w-full border-2 border-[#161614] bg-[#FFFDF7] px-3.5 py-2.5 text-sm text-[#161614] focus:outline-none"
             >
               <option value="all">Semua Kanal (WhatsApp + Web)</option>
               <option value="whatsapp">WhatsApp Bot Saja</option>
@@ -451,7 +431,7 @@ export default function AdminBotControls({
           <div>
             <label
               htmlFor="export-days"
-              className="mb-1.5 block text-xs font-semibold text-slate-700"
+              className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
             >
               Rentang Waktu
             </label>
@@ -461,7 +441,7 @@ export default function AdminBotControls({
               onChange={(e) =>
                 setExportDays(e.target.value as "7" | "30" | "90" | "all")
               }
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-slate-900 focus:outline-none"
+              className="w-full border-2 border-[#161614] bg-[#FFFDF7] px-3.5 py-2.5 text-sm text-[#161614] focus:outline-none"
             >
               <option value="7">7 Hari Terakhir</option>
               <option value="30">30 Hari Terakhir</option>
@@ -470,7 +450,7 @@ export default function AdminBotControls({
             </select>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-600">
+          <div className="border-2 border-dashed border-[#161614]/40 bg-[#F5F0E6] p-3 font-mono text-[11px] leading-relaxed text-[#45433D]">
             File CSV sudah menggunakan UTF-8 BOM (langsung rapi di Excel) dan
             tidak menyertakan nomor HP mentah demi privasi pengguna.
           </div>
@@ -478,7 +458,7 @@ export default function AdminBotControls({
 
         <a
           href={exportUrl}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-xs transition-colors hover:bg-emerald-700"
+          className="zine-btn mt-6 flex w-full items-center justify-center gap-2 bg-[#B9F32B] px-4 py-3 font-display text-sm font-bold text-[#161614]"
         >
           <Download className="h-4 w-4" />
           <span>Download Laporan (.csv)</span>

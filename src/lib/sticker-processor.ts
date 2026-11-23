@@ -42,8 +42,92 @@ export interface StickerResult {
   processingTimeMs: number;
 }
 
-const MAX_STICKER_BYTES = 98 * 1024; // Margin aman di bawah batas 100KB WhatsApp
+const MAX_STICKER_BYTES = 97 * 1024; // Margin aman di bawah batas 100KB WhatsApp (termasuk EXIF)
 const QUALITY_STEPS = [82, 68, 55, 40, 28, 18];
+
+/**
+ * Suntikkan metadata EXIF WhatsApp Sticker Pack ke dalam WebP (RIFF/VP8X)
+ * tanpa dependency tambahan agar stiker menampilkan nama pack "AmbaBot Studio" di WA.
+ */
+function buildWhatsAppExifPayload(
+  packName = "AmbaBot Studio",
+  packPublisher = "Capstone Press 2026"
+): Buffer {
+  const json = JSON.stringify({
+    "sticker-pack-id": "com.ambabot.studio.capstone",
+    "sticker-pack-name": packName,
+    "sticker-pack-publisher": packPublisher,
+    emojis: ["🎨", "🔥"],
+  });
+  const jsonBuf = Buffer.from(json, "utf8");
+  const exifHeader = Buffer.from([
+    0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x16, 0x00, 0x00, 0x00,
+  ]);
+  exifHeader.writeUInt32LE(jsonBuf.length, 14);
+  return Buffer.concat([exifHeader, jsonBuf]);
+}
+
+function injectWhatsAppStickerExif(webpBuffer: Buffer): Buffer {
+  try {
+    if (
+      webpBuffer.length < 20 ||
+      webpBuffer.toString("ascii", 0, 4) !== "RIFF" ||
+      webpBuffer.toString("ascii", 8, 12) !== "WEBP"
+    ) {
+      return webpBuffer;
+    }
+
+    const exifData = buildWhatsAppExifPayload();
+    const exifPad = exifData.length % 2 === 1 ? Buffer.alloc(1) : Buffer.alloc(0);
+    const exifChunkHeader = Buffer.alloc(8);
+    exifChunkHeader.write("EXIF", 0, 4, "ascii");
+    exifChunkHeader.writeUInt32LE(exifData.length, 4);
+    const exifChunk = Buffer.concat([exifChunkHeader, exifData, exifPad]);
+
+    const firstChunkFourCC = webpBuffer.toString("ascii", 12, 16);
+    let bodyWithoutRiffHeader: Buffer;
+
+    if (firstChunkFourCC === "VP8X") {
+      // Sudah extended WebP: aktifkan bit flag EXIF (0x08) pada byte ke-20
+      const cloned = Buffer.from(webpBuffer.subarray(12));
+      cloned[8] = cloned[8] | 0x08;
+      bodyWithoutRiffHeader = Buffer.concat([cloned, exifChunk]);
+    } else {
+      // Simple WebP (VP8 / VP8L): bungkus dengan header VP8X (512x512) + flag EXIF (+ Alpha untuk VP8L)
+      const isLossless = firstChunkFourCC === "VP8L";
+      const flags = 0x08 | (isLossless ? 0x10 : 0x00);
+      const vp8xChunk = Buffer.alloc(18);
+      vp8xChunk.write("VP8X", 0, 4, "ascii");
+      vp8xChunk.writeUInt32LE(10, 4); // panjang payload VP8X = 10 byte
+      vp8xChunk[8] = flags;
+      // Canvas width - 1 = 511 (0x0001FF) dalam 24-bit little-endian
+      vp8xChunk[12] = 0xff;
+      vp8xChunk[13] = 0x01;
+      vp8xChunk[14] = 0x00;
+      // Canvas height - 1 = 511 (0x0001FF) dalam 24-bit little-endian
+      vp8xChunk[15] = 0xff;
+      vp8xChunk[16] = 0x01;
+      vp8xChunk[17] = 0x00;
+
+      bodyWithoutRiffHeader = Buffer.concat([
+        vp8xChunk,
+        webpBuffer.subarray(12),
+        exifChunk,
+      ]);
+    }
+
+    const riffHeader = Buffer.alloc(12);
+    riffHeader.write("RIFF", 0, 4, "ascii");
+    riffHeader.writeUInt32LE(4 + bodyWithoutRiffHeader.length, 4);
+    riffHeader.write("WEBP", 8, 4, "ascii");
+
+    return Buffer.concat([riffHeader, bodyWithoutRiffHeader]);
+  } catch {
+    return webpBuffer;
+  }
+}
 
 const AVATAR_COLORS = [
   "#E17076",
@@ -149,9 +233,11 @@ async function encodeWebpUnderLimit(
     throw new Error("Failed to encode WebP sticker.");
   }
 
+  const brandedBuffer = injectWhatsAppStickerExif(finalBuffer);
+
   return {
-    buffer: finalBuffer,
-    sizeKb: Number((finalBuffer.byteLength / 1024).toFixed(2)),
+    buffer: brandedBuffer,
+    sizeKb: Number((brandedBuffer.byteLength / 1024).toFixed(2)),
     processingTimeMs: Date.now() - startTime,
   };
 }

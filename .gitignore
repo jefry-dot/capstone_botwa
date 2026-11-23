@@ -8,3 +8,6 @@ build/
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+wa-bot/auth_info/
+wa-bot/node_modules/
+wa-bot/qr.png

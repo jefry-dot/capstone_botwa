@@ -85,17 +85,20 @@ function AdminLoginForm() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col justify-center py-8 sm:py-14">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="zine-card p-6 sm:p-8">
         {/* Header */}
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-emerald-400 shadow-xs">
+        <div className="mb-6 border-b-2 border-[#161614] pb-5 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center border-2 border-[#161614] bg-[#FFD646] text-[#161614] shadow-[3px_3px_0_#161614]">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
-            Admin Portal Login
+          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#5C584F]">
+            AKSES TERBATAS // RBAC
+          </p>
+          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-[#161614]">
+            Portal Login Admin
           </h1>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            Masuk untuk mengakses Live Telemetry Dashboard, kontrol fitur bot,
+          <p className="mt-1.5 text-xs leading-relaxed text-[#45433D]">
+            Masuk untuk membuka Live Telemetry Dashboard, kontrol fitur bot,
             dan moderasi pengguna WhatsApp.
           </p>
         </div>
@@ -105,12 +108,12 @@ function AdminLoginForm() {
           <div>
             <label
               htmlFor="admin-email"
-              className="mb-1.5 block text-xs font-semibold text-slate-700"
+              className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
             >
               Email Admin
             </label>
             <div className="relative">
-              <Mail className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Mail className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[#5C584F]" />
               <input
                 id="admin-email"
                 type="email"
@@ -119,7 +122,7 @@ function AdminLoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@kampus.ac.id"
-                className="w-full rounded-xl border border-slate-300 py-2.5 pr-3.5 pl-10 text-sm text-slate-900 focus:border-slate-900 focus:outline-none"
+                className="w-full border-2 border-[#161614] bg-[#FFFDF7] py-2.5 pr-3.5 pl-10 text-sm text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
               />
             </div>
           </div>
@@ -127,12 +130,12 @@ function AdminLoginForm() {
           <div>
             <label
               htmlFor="admin-password"
-              className="mb-1.5 block text-xs font-semibold text-slate-700"
+              className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
             >
               Password
             </label>
             <div className="relative">
-              <Lock className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Lock className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[#5C584F]" />
               <input
                 id="admin-password"
                 type={showPassword ? "text" : "password"}
@@ -141,7 +144,7 @@ function AdminLoginForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Masukkan password"
-                className="w-full rounded-xl border border-slate-300 py-2.5 pr-10 pl-10 text-sm text-slate-900 focus:border-slate-900 focus:outline-none"
+                className="w-full border-2 border-[#161614] bg-[#FFFDF7] py-2.5 pr-10 pl-10 text-sm text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
               />
               <button
                 type="button"
@@ -149,7 +152,7 @@ function AdminLoginForm() {
                 aria-label={
                   showPassword ? "Sembunyikan password" : "Lihat password"
                 }
-                className="absolute top-1/2 right-3 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute top-1/2 right-3 -translate-y-1/2 text-[#5C584F] hover:text-[#161614]"
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -161,7 +164,7 @@ function AdminLoginForm() {
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            <div className="flex items-start gap-2 border-2 border-[#161614] bg-[#EB3B2E] p-3 text-xs font-medium text-white shadow-[2px_2px_0_#161614]">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -170,7 +173,7 @@ function AdminLoginForm() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="zine-btn flex w-full cursor-pointer items-center justify-center gap-2 bg-[#161614] px-4 py-3 font-display text-sm font-bold text-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? (
               <>
@@ -184,16 +187,16 @@ function AdminLoginForm() {
         </form>
 
         {/* Footer Info */}
-        <div className="mt-6 border-t border-slate-100 pt-4 text-center">
-          <p className="text-[11px] text-slate-500">
+        <div className="mt-6 border-t-2 border-dashed border-[#161614]/25 pt-4 text-center">
+          <p className="text-[11px] text-[#5C584F]">
             Pengguna biasa tidak perlu login untuk membuat stiker.
           </p>
           <Link
-            href="/"
-            className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+            href="/studio"
+            className="mt-2.5 inline-flex items-center gap-1.5 font-mono text-xs font-bold uppercase text-[#161614] hover:underline"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Kembali ke Web Sticker Studio</span>
+            <span>Buka Web Sticker Studio</span>
           </Link>
         </div>
       </div>

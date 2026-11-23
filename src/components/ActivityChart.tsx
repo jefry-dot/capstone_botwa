@@ -29,38 +29,38 @@ const FEATURE_META: Record<
 > = {
   ai_meme: {
     label: "AI Meme / Roast",
-    barColor: "bg-violet-500",
-    badgeClass: "bg-violet-50 text-violet-700",
+    barColor: "bg-[#161614]",
+    badgeClass: "bg-[#FFD646] text-[#161614]",
   },
   quote_chat: {
     label: "Quote Chat (/qc)",
-    barColor: "bg-emerald-500",
-    badgeClass: "bg-emerald-50 text-emerald-700",
+    barColor: "bg-[#B9F32B]",
+    badgeClass: "bg-[#B9F32B] text-[#161614]",
   },
   brat_text: {
     label: "Brat Text (/brat)",
-    barColor: "bg-lime-500",
-    badgeClass: "bg-lime-100 text-lime-800",
+    barColor: "bg-[#8ACE00]",
+    badgeClass: "bg-[#8ACE00] text-[#161614]",
   },
   breaking_news: {
     label: "Breaking News (/news)",
-    barColor: "bg-rose-500",
-    badgeClass: "bg-rose-50 text-rose-700",
+    barColor: "bg-[#EB3B2E]",
+    badgeClass: "bg-[#EB3B2E] text-white",
   },
   meme_text: {
     label: "Classic Meme",
-    barColor: "bg-amber-500",
-    badgeClass: "bg-amber-50 text-amber-700",
+    barColor: "bg-[#FFD646]",
+    badgeClass: "bg-[#EFE7D8] text-[#161614]",
   },
   crop: {
     label: "Smart Crop 1:1",
-    barColor: "bg-sky-500",
-    badgeClass: "bg-sky-50 text-sky-700",
+    barColor: "bg-[#5C584F]",
+    badgeClass: "bg-[#F5F0E6] text-[#161614]",
   },
   standard: {
     label: "Standard WebP",
-    barColor: "bg-slate-600",
-    badgeClass: "bg-slate-100 text-slate-700",
+    barColor: "bg-[#3B3934]",
+    badgeClass: "bg-[#EFE7D8] text-[#161614]",
   },
 };
 
@@ -77,7 +77,6 @@ export default function ActivityChart({
   dailyStats,
   featureStats,
 }: ActivityChartProps) {
-  // Gabungkan data harian per tanggal agar WhatsApp & Web muncul berdampingan (maks 14 hari terakhir)
   const chartData = useMemo(() => {
     const grouped = new Map<
       string,
@@ -117,27 +116,30 @@ export default function ActivityChart({
   return (
     <div className="grid gap-6 lg:grid-cols-12">
       {/* Kiri: Grafik Tren Harian WA vs Web */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs lg:col-span-7">
-        <div className="mb-4 flex items-center justify-between gap-2">
+      <div className="zine-card p-5 lg:col-span-7">
+        <div className="mb-4 flex items-center justify-between gap-2 border-b-2 border-[#161614] pb-3">
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="font-display text-base font-bold text-[#161614]">
               Tren Pembuatan Stiker Harian
             </h2>
-            <p className="text-xs text-slate-500">
-              Perbandingan stiker sukses dari WhatsApp Bot vs Web Studio (14 hari terakhir)
+            <p className="font-mono text-[11px] text-[#5C584F]">
+              Perbandingan WhatsApp Bot vs Web Studio (14 hari terakhir)
             </p>
           </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+          <div className="flex h-9 w-9 items-center justify-center border-2 border-[#161614] bg-[#B9F32B] text-[#161614]">
             <BarChart3 className="h-4 w-4" />
           </div>
         </div>
 
         {chartData.length === 0 ? (
-          <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center text-slate-500">
-            <BarChart3 className="mb-2 h-8 w-8 opacity-40" />
-            <p className="text-sm font-medium">Belum ada data harian</p>
-            <p className="mt-1 text-xs">
-              Buat stiker dari Web Studio atau Bot WA untuk melihat grafik di sini.
+          <div className="flex h-64 flex-col items-center justify-center border-2 border-dashed border-[#161614]/40 bg-[#F5F0E6] text-center text-[#5C584F]">
+            <BarChart3 className="mb-2 h-8 w-8 opacity-50" />
+            <p className="font-display text-sm font-bold text-[#161614]">
+              Belum ada data harian
+            </p>
+            <p className="mt-1 font-mono text-xs">
+              Buat stiker dari Web Studio atau Bot WA untuk melihat grafik di
+              sini.
             </p>
           </div>
         ) : (
@@ -150,27 +152,28 @@ export default function ActivityChart({
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="#e2e8f0"
+                  stroke="#d5cdbe"
                 />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 12, fill: "#64748b" }}
-                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "#3B3934" }}
+                  axisLine={{ stroke: "#161614" }}
                   tickLine={false}
                 />
                 <YAxis
                   allowDecimals={false}
-                  tick={{ fontSize: 12, fill: "#64748b" }}
-                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "#3B3934" }}
+                  axisLine={{ stroke: "#161614" }}
                   tickLine={false}
                 />
                 <Tooltip
-                  cursor={{ fill: "#f8fafc" }}
+                  cursor={{ fill: "#EFE7D8" }}
                   contentStyle={{
-                    borderRadius: "12px",
-                    border: "1px solid #e2e8f0",
+                    borderRadius: "0px",
+                    border: "2px solid #161614",
+                    backgroundColor: "#FFFDF7",
                     fontSize: "12px",
-                    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
+                    boxShadow: "3px 3px 0px #161614",
                   }}
                 />
                 <Legend
@@ -179,15 +182,17 @@ export default function ActivityChart({
                 <Bar
                   dataKey="whatsapp"
                   name="WhatsApp Bot"
-                  fill="#10b981"
-                  radius={[6, 6, 0, 0]}
+                  fill="#8ACE00"
+                  stroke="#161614"
+                  strokeWidth={1.5}
                   maxBarSize={30}
                 />
                 <Bar
                   dataKey="web"
                   name="Web Studio"
-                  fill="#0f172a"
-                  radius={[6, 6, 0, 0]}
+                  fill="#161614"
+                  stroke="#161614"
+                  strokeWidth={1.5}
                   maxBarSize={30}
                 />
               </BarChart>
@@ -197,26 +202,28 @@ export default function ActivityChart({
       </div>
 
       {/* Kanan: Breakdown Popularitas Fitur */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs lg:col-span-5">
-        <div className="mb-4 flex items-center justify-between gap-2">
+      <div className="zine-card p-5 lg:col-span-5">
+        <div className="mb-4 flex items-center justify-between gap-2 border-b-2 border-[#161614] pb-3">
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="font-display text-base font-bold text-[#161614]">
               Popularitas Fitur Stiker
             </h2>
-            <p className="text-xs text-slate-500">
-              Pemakaian per mode &amp; rata-rata waktu proses
+            <p className="font-mono text-[11px] text-[#5C584F]">
+              Pemakaian per mode &amp; rata-rata latency
             </p>
           </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+          <div className="flex h-9 w-9 items-center justify-center border-2 border-[#161614] bg-[#FFD646] text-[#161614]">
             <Flame className="h-4 w-4" />
           </div>
         </div>
 
         {featureStats.length === 0 ? (
-          <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center text-slate-500">
-            <Flame className="mb-2 h-8 w-8 opacity-40" />
-            <p className="text-sm font-medium">Belum ada statistik fitur</p>
-            <p className="mt-1 text-xs">
+          <div className="flex h-64 flex-col items-center justify-center border-2 border-dashed border-[#161614]/40 bg-[#F5F0E6] text-center text-[#5C584F]">
+            <Flame className="mb-2 h-8 w-8 opacity-50" />
+            <p className="font-display text-sm font-bold text-[#161614]">
+              Belum ada statistik fitur
+            </p>
+            <p className="mt-1 font-mono text-xs">
               Data tren 7 mode stiker akan muncul otomatis di sini.
             </p>
           </div>
@@ -225,8 +232,8 @@ export default function ActivityChart({
             {featureStats.map((item) => {
               const meta = FEATURE_META[item.command_type] ?? {
                 label: item.command_type,
-                barColor: "bg-slate-500",
-                badgeClass: "bg-slate-100 text-slate-700",
+                barColor: "bg-[#161614]",
+                badgeClass: "bg-[#EFE7D8] text-[#161614]",
               };
               const used = Number(item.total_used ?? 0);
               const widthPercent =
@@ -238,22 +245,22 @@ export default function ActivityChart({
                 <div key={item.command_type} className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <span
-                      className={`rounded-md px-2 py-0.5 font-semibold ${meta.badgeClass}`}
+                      className={`border border-[#161614] px-2 py-0.5 font-mono text-[11px] font-bold ${meta.badgeClass}`}
                     >
                       {meta.label}
                     </span>
-                    <div className="flex items-center gap-2 text-slate-600">
-                      <span className="font-bold text-slate-900">
+                    <div className="flex items-center gap-2 font-mono text-[#45433D]">
+                      <span className="font-bold text-[#161614]">
                         {used.toLocaleString("id-ID")}x
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-[#5C584F]">
                         ({item.avg_process_ms ?? 0} ms)
                       </span>
                     </div>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-3 w-full overflow-hidden border border-[#161614] bg-[#F5F0E6]">
                     <div
-                      className={`h-full rounded-full transition-all ${meta.barColor}`}
+                      className={`h-full transition-all ${meta.barColor}`}
                       style={{ width: `${widthPercent}%` }}
                     />
                   </div>

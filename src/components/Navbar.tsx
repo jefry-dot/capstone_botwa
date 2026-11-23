@@ -4,13 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Sparkles,
   BarChart3,
-  Wand2,
   Lock,
   LogOut,
   ShieldCheck,
   Loader2,
+  ArrowUpRight,
 } from "lucide-react";
 import type { AdminSession } from "@/lib/auth";
 
@@ -37,51 +36,64 @@ export default function Navbar({ admin = null }: NavbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b-2 border-[#161614] bg-[#F5F0E6]/95 backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-            <Sparkles className="h-5 w-5" />
+        {/* Brand Stamp */}
+        <Link href="/" className="group flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center border-2 border-[#161614] bg-[#B9F32B] font-display text-sm font-bold text-[#161614] shadow-[2px_2px_0_#161614] transition-transform group-hover:-rotate-3">
+            AB
           </div>
-          <div className="leading-tight">
-            <span className="block text-sm font-bold tracking-tight text-slate-900 sm:text-base">
-              WA AI Sticker Studio
+          <div className="leading-none">
+            <span className="block font-display text-base font-bold tracking-tight text-[#161614]">
+              AMBABOT
             </span>
-            <span className="hidden text-xs text-slate-500 sm:block">
-              WhatsApp Cloud API + Gemini Vision
+            <span className="mt-0.5 hidden font-mono text-[10px] font-medium uppercase tracking-wider text-[#5C584F] sm:block">
+              Sticker Press &amp; Bot
             </span>
           </div>
         </Link>
 
+        {/* Navigation Links */}
         <nav className="flex items-center gap-1.5 sm:gap-2">
           <Link
             href="/"
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:text-sm ${
+            className={`px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition-colors ${
               pathname === "/"
-                ? "bg-slate-900 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                ? "border-2 border-[#161614] bg-[#FFD646] text-[#161614]"
+                : "border-2 border-transparent text-[#3B3934] hover:border-[#161614] hover:bg-[#FFFDF7]"
             }`}
           >
-            <Wand2 className="h-4 w-4" />
-            <span>Sticker Studio</span>
+            Profil
+          </Link>
+
+          <Link
+            href="/studio"
+            className={`inline-flex items-center gap-1 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition-colors ${
+              pathname === "/studio"
+                ? "border-2 border-[#161614] bg-[#B9F32B] text-[#161614] shadow-[2px_2px_0_#161614]"
+                : "border-2 border-[#161614] bg-[#FFFDF7] text-[#161614] shadow-[2px_2px_0_#161614] hover:bg-[#B9F32B]"
+            }`}
+          >
+            <span>Studio</span>
+            <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
 
           {admin ? (
             <>
               <Link
                 href="/dashboard"
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:text-sm ${
+                className={`flex items-center gap-1.5 border-2 border-[#161614] px-3 py-1.5 font-mono text-xs font-bold uppercase transition-colors ${
                   pathname.startsWith("/dashboard")
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    ? "bg-[#161614] text-[#F5F0E6]"
+                    : "bg-[#FFFDF7] text-[#161614] hover:bg-[#EFE7D8]"
                 }`}
               >
-                <BarChart3 className="h-4 w-4" />
-                <span>Dashboard</span>
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Dashboard</span>
               </Link>
 
-              <div className="hidden items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold tracking-wide text-emerald-800 uppercase md:inline-flex">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+              <div className="hidden items-center gap-1 border-2 border-[#161614] bg-[#B9F32B] px-2 py-1 font-mono text-[10px] font-bold uppercase text-[#161614] md:inline-flex">
+                <ShieldCheck className="h-3 w-3" />
                 <span>{admin.role}</span>
               </div>
 
@@ -90,12 +102,12 @@ export default function Navbar({ admin = null }: NavbarProps) {
                 onClick={handleLogout}
                 disabled={isLoggingOut}
                 title={`Logout (${admin.email})`}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60 sm:text-sm"
+                className="flex items-center gap-1 border-2 border-[#161614] bg-[#FFFDF7] px-2.5 py-1.5 font-mono text-xs font-bold uppercase text-[#161614] transition-colors hover:bg-[#EB3B2E] hover:text-white disabled:opacity-60"
               >
                 {isLoggingOut ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="h-3.5 w-3.5" />
                 )}
                 <span className="hidden sm:inline">Keluar</span>
               </button>
@@ -103,13 +115,13 @@ export default function Navbar({ admin = null }: NavbarProps) {
           ) : (
             <Link
               href="/admin/login"
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+              className={`flex items-center gap-1.5 border-2 border-[#161614] px-2.5 py-1.5 font-mono text-xs font-bold uppercase transition-colors ${
                 pathname === "/admin/login"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-[#161614] text-[#F5F0E6]"
+                  : "bg-transparent text-[#3B3934] hover:bg-[#161614] hover:text-[#F5F0E6]"
               }`}
             >
-              <Lock className="h-3.5 w-3.5" />
+              <Lock className="h-3 w-3" />
               <span>Admin</span>
             </Link>
           )}
