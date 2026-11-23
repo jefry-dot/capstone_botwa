@@ -12,8 +12,8 @@ import {
   Loader2,
   AlertCircle,
   ArrowRight,
-  Crown,
 } from "lucide-react";
+import AmbaBotLogo from "@/components/AmbaBotLogo";
 
 function RegisterForm() {
   const router = useRouter();
@@ -74,8 +74,8 @@ function RegisterForm() {
     <div className="mx-auto flex max-w-md flex-col justify-center py-6 sm:py-10">
       <div className="zine-card p-6 sm:p-8">
         <div className="mb-6 border-b-2 border-[#161614] pb-5 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center border-2 border-[#161614] bg-[#B9F32B] text-[#161614] shadow-[3px_3px_0_#161614]">
-            <Crown className="h-6 w-6" />
+          <div className="mx-auto mb-3 flex justify-center">
+            <AmbaBotLogo className="h-14 w-14" />
           </div>
           <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#5C584F]">
             {wantsPro

@@ -10,9 +10,9 @@ import {
   EyeOff,
   Loader2,
   AlertCircle,
-  User,
   ArrowRight,
 } from "lucide-react";
+import AmbaBotLogo from "@/components/AmbaBotLogo";
 
 function sanitizeNext(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/account";
@@ -68,8 +68,8 @@ function UserLoginForm() {
     <div className="mx-auto flex max-w-md flex-col justify-center py-6 sm:py-12">
       <div className="zine-card p-6 sm:p-8">
         <div className="mb-6 border-b-2 border-[#161614] pb-5 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center border-2 border-[#161614] bg-[#FFD646] text-[#161614] shadow-[3px_3px_0_#161614]">
-            <User className="h-6 w-6" />
+          <div className="mx-auto mb-3 flex justify-center">
+            <AmbaBotLogo className="h-14 w-14" />
           </div>
           <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#5C584F]">
             USER PORTAL // AMBABOT STUDIO

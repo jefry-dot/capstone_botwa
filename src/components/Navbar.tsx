@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { AdminSession } from "@/lib/auth";
 import type { CurrentUserSession } from "@/lib/user-auth";
+import AmbaBotLogo from "@/components/AmbaBotLogo";
 
 const WA_BOT_NUMBER =
   process.env.NEXT_PUBLIC_WA_BOT_NUMBER || "6285959632681";
@@ -53,9 +54,7 @@ export default function Navbar({ admin = null, user = null }: NavbarProps) {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
         {/* Brand Stamp */}
         <Link href="/" className="group flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center border-2 border-[#161614] bg-[#B9F32B] font-display text-sm font-bold text-[#161614] shadow-[2px_2px_0_#161614] transition-transform group-hover:-rotate-3">
-            AB
-          </div>
+          <AmbaBotLogo className="h-10 w-10 shrink-0 transition-transform duration-150 group-hover:-rotate-6" />
           <div className="leading-none">
             <span className="block font-display text-base font-bold tracking-tight text-[#161614]">
               AMBABOT

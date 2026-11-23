@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import AmbaBotLogo from "@/components/AmbaBotLogo";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getCurrentUserProfile } from "@/lib/user-auth";
 import "./globals.css";
@@ -42,9 +43,12 @@ export default async function RootLayout({
           <footer className="mt-12 border-t-2 border-[#161614] bg-[#EFE7D8]">
             <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:grid-cols-3 sm:px-6">
               <div className="space-y-2">
-                <p className="font-display text-base font-bold tracking-tight">
-                  AMBABOT STUDIO.
-                </p>
+                <div className="flex items-center gap-2">
+                  <AmbaBotLogo className="h-8 w-8 shrink-0" />
+                  <p className="font-display text-base font-bold tracking-tight">
+                    AMBABOT STUDIO.
+                  </p>
+                </div>
                 <p className="text-xs leading-relaxed text-[#45433D]">
                   Bot WhatsApp pembuat stiker berbasis Sharp SVG &amp; Gemini
                   Vision. Pakai langsung dari DM atau Grup WA, kelola kuota
