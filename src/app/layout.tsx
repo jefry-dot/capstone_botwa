@@ -1,34 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  Space_Grotesk,
-  Plus_Jakarta_Sans,
-  JetBrains_Mono,
-} from "next/font/google";
 import Navbar from "@/components/Navbar";
 import { getCurrentAdmin } from "@/lib/auth";
 import "./globals.css";
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["500", "700"],
-  variable: "--font-space",
-  display: "swap",
-});
-
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-jakarta",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-jetbrains",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "AmbaBot Studio — Mesin Stiker WhatsApp & Web Press",
@@ -44,10 +18,7 @@ export default async function RootLayout({
   const admin = await getCurrentAdmin();
 
   return (
-    <html
-      lang="id"
-      className={`${spaceGrotesk.variable} ${plusJakarta.variable} ${jetbrainsMono.variable}`}
-    >
+    <html lang="id">
       <body className="min-h-screen font-sans text-[#161614] antialiased selection:bg-[#B9F32B] selection:text-[#161614]">
         <div className="flex min-h-screen flex-col">
           {/* Strip Cetak Atas */}
