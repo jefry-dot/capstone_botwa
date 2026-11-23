@@ -393,7 +393,10 @@ async function handleTextMessage(
     return;
   }
 
-  await sendTextMessage(waId, HELP_MESSAGE);
+  // Hanya balas panduan jika user mengetik /help atau /menu; abaikan obrolan biasa
+  if (lower === "/help" || lower === "/menu") {
+    await sendTextMessage(waId, HELP_MESSAGE);
+  }
 }
 
 // ============================================================================

@@ -84,7 +84,7 @@ const HELP_MESSAGE = [
   "🎨 *WA AI Sticker Studio — Daftar Perintah*",
   "",
   "📸 *Kirim atau Reply Foto dengan Caption:*",
-  "• *(tanpa caption di chat pribadi)* atau `/stiker` → Stiker transparan",
+  "• `/stiker` → Stiker transparan",
   "• `/crop` → Stiker penuh 1:1 (kotak)",
   "• `/stiker Atas | Bawah` → Meme klasik",
   "• `/aimeme` → AI otomatis bikin caption meme dari foto",
@@ -295,13 +295,8 @@ async function handleIncomingMessage(
   const hasQuotedImage = Boolean(quotedContent?.imageMessage);
   const quotedText = quotedContent ? extractTextAndCaption(quotedContent) : "";
 
-  // Di dalam GRUP, bot hanya merespons jika pesan diawali perintah '/' agar tidak spam
-  if (isGroup && !isCommandText(text)) {
-    return;
-  }
-
-  // Abaikan stiker/audio/video tanpa perintah di chat pribadi
-  if (!hasDirectImage && !text) {
+  // Abaikan seluruh pesan (baik di DM maupun di GRUP) yang tidak diawali perintah valid
+  if (!isCommandText(text)) {
     return;
   }
 
@@ -388,8 +383,8 @@ async function handleIncomingMessage(
     return;
   }
 
-  // 5. Menu / Help (di DM semua sapaan biasa dibalas menu; di grup hanya /help atau /menu)
-  if (!isGroup || lower === "/help" || lower === "/menu") {
+  // 5. Menu / Help (hanya merespons /help atau /menu)
+  if (lower === "/help" || lower === "/menu") {
     await sock.sendMessage(remoteJid, { text: HELP_MESSAGE }, { quoted: msg });
   }
 }
