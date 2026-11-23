@@ -1,5 +1,6 @@
 const GRAPH_API_VERSION = process.env.WHATSAPP_API_VERSION || "v21.0";
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+const META_FETCH_TIMEOUT_MS = 20_000;
 
 function getWhatsAppConfig() {
   const token = process.env.WHATSAPP_TOKEN;
@@ -20,6 +21,7 @@ export async function downloadWhatsAppMedia(mediaId: string): Promise<Buffer> {
   // Step 1: Ambil temporary download URL dari Meta
   const metaRes = await fetch(`${GRAPH_BASE_URL}/${mediaId}`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(META_FETCH_TIMEOUT_MS),
   });
 
   if (!metaRes.ok) {
@@ -35,6 +37,7 @@ export async function downloadWhatsAppMedia(mediaId: string): Promise<Buffer> {
   // Step 2: Download binary gambarnya
   const fileRes = await fetch(metaJson.url, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(META_FETCH_TIMEOUT_MS),
   });
 
   if (!fileRes.ok) {
@@ -60,6 +63,7 @@ export async function uploadStickerMedia(webpBuffer: Buffer): Promise<string> {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
+    signal: AbortSignal.timeout(META_FETCH_TIMEOUT_MS),
   });
 
   if (!res.ok) {
@@ -87,6 +91,7 @@ export async function sendStickerMessage(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(META_FETCH_TIMEOUT_MS),
     body: JSON.stringify({
       messaging_product: "whatsapp",
       recipient_type: "individual",
@@ -111,6 +116,7 @@ export async function sendTextMessage(to: string, body: string): Promise<void> {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(META_FETCH_TIMEOUT_MS),
     body: JSON.stringify({
       messaging_product: "whatsapp",
       recipient_type: "individual",

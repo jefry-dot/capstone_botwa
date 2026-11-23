@@ -194,6 +194,35 @@ export async function consumeAiQuota(
 }
 
 /**
+ * Kembalikan 1 kuota AI harian (best-effort) jika proses upstream (download media / Gemini API) gagal.
+ */
+export async function refundAiQuota(rateKey: string): Promise<void> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const today = getTodayWibDate();
+    const { data, error } = await supabase
+      .from("rate_limits")
+      .select("ai_count")
+      .eq("rate_key", rateKey)
+      .eq("window_date", today)
+      .maybeSingle<{ ai_count: number }>();
+
+    if (error || !data || data.ai_count <= 0) return;
+
+    await supabase
+      .from("rate_limits")
+      .update({
+        ai_count: Math.max(0, Number(data.ai_count) - 1),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("rate_key", rateKey)
+      .eq("window_date", today);
+  } catch (err) {
+    console.error("[BotGuard] Failed to refund AI quota:", err);
+  }
+}
+
+/**
  * Baca jumlah pemakaian AI hari ini (zona WIB) tanpa mengurangi kuota.
  */
 export async function getTodayAiUsage(rateKey: string): Promise<number> {
@@ -277,13 +306,15 @@ export async function verifyAndLinkWaCode(
 
   try {
     const supabase = getSupabaseAdmin();
-    const { data: target, error } = await supabase
+    const { data: candidates, error } = await supabase
       .from("user_profiles")
       .select("*")
       .eq("link_code", code)
-      .maybeSingle<UserProfileRow>();
+      .order("link_code_expires_at", { ascending: false })
+      .limit(5);
 
-    if (error || !target) {
+    const rows = (candidates ?? []) as UserProfileRow[];
+    if (error || rows.length === 0) {
       return {
         ok: false,
         message:
@@ -291,10 +322,14 @@ export async function verifyAndLinkWaCode(
       };
     }
 
-    if (
-      !target.link_code_expires_at ||
-      new Date(target.link_code_expires_at).getTime() <= Date.now()
-    ) {
+    const nowMs = Date.now();
+    const target = rows.find(
+      (row) =>
+        row.link_code_expires_at &&
+        new Date(row.link_code_expires_at).getTime() > nowMs
+    );
+
+    if (!target) {
       return {
         ok: false,
         message:

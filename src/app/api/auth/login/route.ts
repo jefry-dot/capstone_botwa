@@ -36,8 +36,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Pastikan baris user_profiles tersedia
+    // Tolak login akun admin-only lewat portal user agar admin_profiles & user_profiles tetap terpisah
     const adminDb = getSupabaseAdmin();
+    const { data: adminProfile } = await adminDb
+      .from("admin_profiles")
+      .select("id")
+      .eq("id", data.user.id)
+      .maybeSingle<{ id: string }>();
+
+    if (adminProfile) {
+      await supabase.auth.signOut();
+      return NextResponse.json(
+        {
+          error:
+            "Akun ini adalah akun Admin. Silakan masuk melalui Portal Admin (/admin/login).",
+        },
+        { status: 403 }
+      );
+    }
+
+    // Pastikan baris user_profiles tersedia
     const fullName =
       (typeof data.user.user_metadata?.full_name === "string" &&
         data.user.user_metadata.full_name.trim()) ||

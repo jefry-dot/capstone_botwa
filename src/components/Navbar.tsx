@@ -148,7 +148,7 @@ export default function Navbar({ admin = null, user = null }: NavbarProps) {
                 )}
                 <span>Akun</span>
                 <span
-                  className={`hidden px-1 py-0.2 text-[9px] font-bold sm:inline ${
+                  className={`hidden px-1 py-0.5 text-[9px] font-bold sm:inline ${
                     user.isProActive
                       ? "bg-[#B9F32B] text-[#161614]"
                       : "bg-[#EFE7D8] text-[#161614]"

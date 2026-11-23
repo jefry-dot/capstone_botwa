@@ -22,6 +22,7 @@ import {
   getBotSettings,
   isWaUserBlocked,
   consumeAiQuota,
+  refundAiQuota,
   getTodayAiUsage,
   getLinkedUserByWaId,
   verifyAndLinkWaCode,
@@ -87,6 +88,10 @@ async function saveQrCodePng(qrText: string) {
   }
 }
 
+const APP_URL = (
+  process.env.NEXT_PUBLIC_APP_URL || "https://capstone-botwa.vercel.app"
+).replace(/\/+$/, "");
+
 const HELP_MESSAGE = [
   "🎨 *AmbaBot Studio — Daftar Perintah*",
   "",
@@ -106,7 +111,7 @@ const HELP_MESSAGE = [
   "• `/status` → Cek paket (Free/Pro), sisa kuota AI & Pack EXIF",
   "• `/link <kode>` → Tautkan WA ke akun web untuk aktifkan Pro",
   "",
-  "🌐 *Portal Akun & Upgrade Pro:* https://capstone-botwa.vercel.app",
+  `🌐 *Portal Akun & Upgrade Pro:* ${APP_URL}`,
 ].join("\n");
 
 // ============================================================================
@@ -149,10 +154,185 @@ function resolveMemberExif(
 }
 
 // ============================================================================
-// Helper: Ekstrak JID, Nomor WA, Teks, dan Quoted Media
+// Helper: Ekstrak JID, Resolusi LID -> Nomor HP, Dedup Pesan, & Nama Pengirim
 // ============================================================================
+const MAX_PUSH_NAME_CACHE = 2000;
+const MAX_LID_CACHE = 4000;
+const GROUP_META_TTL_MS = 10 * 60 * 1000;
+const MESSAGE_DEDUP_TTL_MS = 5 * 60 * 1000;
+
+const knownPushNames = new Map<string, string>();
+const lidToPhoneWaId = new Map<string, string>();
+const groupMetaFetchedAt = new Map<string, number>();
+const processedMessageIds = new Map<string, number>();
+
+function isDuplicateMessageId(messageId: string): boolean {
+  const now = Date.now();
+  for (const [id, ts] of processedMessageIds.entries()) {
+    if (now - ts > MESSAGE_DEDUP_TTL_MS) {
+      processedMessageIds.delete(id);
+    }
+  }
+  if (processedMessageIds.has(messageId)) {
+    return true;
+  }
+  processedMessageIds.set(messageId, now);
+  return false;
+}
+
+function rememberPushName(waId: string, pushName?: string | null) {
+  const cleaned = pushName?.trim();
+  if (!waId || !cleaned) return;
+  if (!knownPushNames.has(waId) && knownPushNames.size >= MAX_PUSH_NAME_CACHE) {
+    const oldestKey = knownPushNames.keys().next().value;
+    if (oldestKey) knownPushNames.delete(oldestKey);
+  }
+  knownPushNames.set(waId, cleaned);
+}
+
 function normalizeWaId(jid: string): string {
   return jid.split("@")[0].split(":")[0].replace(/\D/g, "") || jid;
+}
+
+function isPhoneJid(jid?: string | null): jid is string {
+  return Boolean(jid && jid.endsWith("@s.whatsapp.net"));
+}
+
+function rememberLidMapping(lidJid?: string | null, phoneJid?: string | null) {
+  if (!lidJid || !phoneJid || !isPhoneJid(phoneJid)) return;
+  const lidKey = normalizeWaId(lidJid);
+  const phoneWaId = normalizeWaId(phoneJid);
+  if (!lidKey || !phoneWaId || lidKey === phoneWaId) return;
+
+  if (!lidToPhoneWaId.has(lidKey) && lidToPhoneWaId.size >= MAX_LID_CACHE) {
+    const oldestKey = lidToPhoneWaId.keys().next().value;
+    if (oldestKey) lidToPhoneWaId.delete(oldestKey);
+  }
+  lidToPhoneWaId.set(lidKey, phoneWaId);
+}
+
+async function syncGroupLidMappings(
+  sock: ReturnType<typeof makeWASocket>,
+  groupJid: string
+): Promise<void> {
+  const lastFetched = groupMetaFetchedAt.get(groupJid) ?? 0;
+  if (Date.now() - lastFetched < GROUP_META_TTL_MS) return;
+  groupMetaFetchedAt.set(groupJid, Date.now());
+
+  try {
+    const meta = await sock.groupMetadata(groupJid);
+    for (const participant of meta.participants ?? []) {
+      const candidatePhone = isPhoneJid(participant.jid)
+        ? participant.jid
+        : isPhoneJid(participant.id)
+          ? participant.id
+          : null;
+      const candidateLid = participant.lid?.endsWith("@lid")
+        ? participant.lid
+        : participant.id.endsWith("@lid")
+          ? participant.id
+          : null;
+
+      if (candidateLid && candidatePhone) {
+        rememberLidMapping(candidateLid, candidatePhone);
+      }
+      const resolvedId = candidatePhone
+        ? normalizeWaId(candidatePhone)
+        : normalizeWaId(participant.id);
+      if (participant.notify || participant.name) {
+        rememberPushName(resolvedId, participant.notify || participant.name);
+      }
+    }
+  } catch {
+    // Abaikan jika bot tidak punya akses metadata grup
+  }
+}
+
+async function resolveSenderWaId(
+  sock: ReturnType<typeof makeWASocket>,
+  msg: WAMessage,
+  isGroup: boolean,
+  remoteJid: string
+): Promise<string> {
+  // Rekam pasangan LID <-> Phone Number jika tersedia langsung di key Baileys
+  if (msg.key.participantLid && msg.key.participantPn) {
+    rememberLidMapping(msg.key.participantLid, msg.key.participantPn);
+  }
+  if (msg.key.senderLid && msg.key.senderPn) {
+    rememberLidMapping(msg.key.senderLid, msg.key.senderPn);
+  }
+
+  const directPhoneJid = isGroup ? msg.key.participantPn : msg.key.senderPn;
+  if (isPhoneJid(directPhoneJid)) {
+    return normalizeWaId(directPhoneJid);
+  }
+
+  const rawSenderJid = isGroup ? msg.key.participant || remoteJid : remoteJid;
+  const rawId = normalizeWaId(rawSenderJid);
+
+  if (rawSenderJid.endsWith("@lid")) {
+    const cached = lidToPhoneWaId.get(rawId);
+    if (cached) return cached;
+
+    if (isGroup) {
+      await syncGroupLidMappings(sock, remoteJid);
+      const afterSync = lidToPhoneWaId.get(rawId);
+      if (afterSync) return afterSync;
+    }
+  }
+
+  return rawId;
+}
+
+async function resolveQuotedAuthorName(
+  sock: ReturnType<typeof makeWASocket>,
+  quotedCtx: proto.IContextInfo | null,
+  isGroup: boolean,
+  remoteJid: string,
+  senderWaId: string,
+  fallbackName: string
+): Promise<string> {
+  const quotedJid = quotedCtx?.participant || (!isGroup ? remoteJid : null);
+  if (!quotedJid) return fallbackName;
+
+  let quotedWaId = normalizeWaId(quotedJid);
+  if (quotedJid.endsWith("@lid")) {
+    const mapped = lidToPhoneWaId.get(quotedWaId);
+    if (mapped) {
+      quotedWaId = mapped;
+    } else if (isGroup) {
+      await syncGroupLidMappings(sock, remoteJid);
+      quotedWaId = lidToPhoneWaId.get(quotedWaId) ?? quotedWaId;
+    }
+  }
+
+  if (!quotedWaId || quotedWaId === senderWaId) return fallbackName;
+
+  const botWaId = sock.user?.id ? normalizeWaId(sock.user.id) : null;
+  if (botWaId && quotedWaId === botWaId) {
+    return "AmbaBot Studio";
+  }
+
+  const cached = knownPushNames.get(quotedWaId);
+  if (cached) return cached;
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase
+      .from("wa_users")
+      .select("profile_name")
+      .eq("wa_id", quotedWaId)
+      .maybeSingle<{ profile_name: string | null }>();
+
+    if (data?.profile_name?.trim()) {
+      rememberPushName(quotedWaId, data.profile_name);
+      return data.profile_name.trim();
+    }
+  } catch {
+    // Abaikan jika lookup gagal; gunakan fallback
+  }
+
+  return /^\d{8,15}$/.test(quotedWaId) ? `+${quotedWaId}` : "Teman WA";
 }
 
 function unwrapMessageContent(
@@ -188,14 +368,8 @@ function getQuotedContext(content: proto.IMessage): proto.IContextInfo | null {
   );
 }
 
-function isCommandText(text: string): boolean {
-  const lower = text.trim().toLowerCase();
+function isImageCommand(lower: string): boolean {
   return (
-    lower === "/help" ||
-    lower === "/menu" ||
-    lower === "/status" ||
-    lower === "/link" ||
-    lower.startsWith("/link ") ||
     lower === "/stiker" ||
     lower.startsWith("/stiker ") ||
     lower === "/meme" ||
@@ -207,18 +381,37 @@ function isCommandText(text: string): boolean {
     lower === "/roast" ||
     lower.startsWith("/roast ") ||
     lower === "/news" ||
-    lower.startsWith("/news ") ||
+    lower.startsWith("/news ")
+  );
+}
+
+function isCommandText(text: string): boolean {
+  const lower = text.trim().toLowerCase();
+  return (
+    lower === "/help" ||
+    lower === "/menu" ||
+    lower === "/status" ||
+    lower === "/link" ||
+    lower.startsWith("/link ") ||
     lower === "/qc" ||
     lower.startsWith("/qc ") ||
     lower === "/brat" ||
-    lower.startsWith("/brat ")
+    lower.startsWith("/brat ") ||
+    isImageCommand(lower)
   );
 }
 
 // ============================================================================
 // Main Bot Startup (Auto-Reconnect + QR Terminal & PNG)
 // ============================================================================
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
 async function startBot() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
 
@@ -231,6 +424,38 @@ async function startBot() {
   });
 
   sock.ev.on("creds.update", saveCreds);
+
+  const indexContacts = (
+    contacts: Array<{
+      id?: string;
+      lid?: string;
+      jid?: string;
+      notify?: string;
+      name?: string;
+    }>
+  ) => {
+    for (const c of contacts) {
+      const phoneJid = isPhoneJid(c.jid)
+        ? c.jid
+        : isPhoneJid(c.id)
+          ? c.id
+          : null;
+      const lidJid = c.lid?.endsWith("@lid")
+        ? c.lid
+        : c.id?.endsWith("@lid")
+          ? c.id
+          : null;
+      if (lidJid && phoneJid) {
+        rememberLidMapping(lidJid, phoneJid);
+      }
+      if (phoneJid && (c.notify || c.name)) {
+        rememberPushName(normalizeWaId(phoneJid), c.notify || c.name);
+      }
+    }
+  };
+
+  sock.ev.on("contacts.upsert", indexContacts);
+  sock.ev.on("contacts.update", indexContacts);
 
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -267,9 +492,12 @@ async function startBot() {
       );
 
       if (shouldReconnect) {
-        setTimeout(() => {
-          void startBot();
-        }, 3000);
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            void startBot();
+          }, 3000);
+        }
       } else {
         console.log(
           "🔴 Sesi WhatsApp keluar (Logged Out). Hapus folder 'wa-bot/auth_info' lalu jalankan ulang 'npm run bot' untuk scan QR baru."
@@ -281,11 +509,12 @@ async function startBot() {
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
 
-    for (const msg of messages) {
-      try {
-        await handleIncomingMessage(sock, msg);
-      } catch (err) {
-        console.error("[WA-BOT] Unhandled message error:", err);
+    const results = await Promise.allSettled(
+      messages.map((msg) => handleIncomingMessage(sock, msg))
+    );
+    for (const res of results) {
+      if (res.status === "rejected") {
+        console.error("[WA-BOT] Unhandled message error:", res.reason);
       }
     }
   });
@@ -303,14 +532,20 @@ async function handleIncomingMessage(
     return;
   }
 
+  const messageId = msg.key.id || `baileys-${Date.now()}`;
+  if (msg.key.id && isDuplicateMessageId(msg.key.id)) {
+    return;
+  }
+
   const content = unwrapMessageContent(msg.message);
   if (!content) return;
 
   const isGroup = remoteJid.endsWith("@g.us");
-  const senderJid = isGroup ? msg.key.participant || remoteJid : remoteJid;
-  const waId = normalizeWaId(senderJid);
+  const waId = await resolveSenderWaId(sock, msg, isGroup, remoteJid);
   const profileName = msg.pushName?.trim() || "User WA";
-  const messageId = msg.key.id || `baileys-${Date.now()}`;
+
+  // Simpan cache nama pengirim dari semua pesan masuk agar fitur reply /qc menampilkan nama teman yang tepat
+  rememberPushName(waId, msg.pushName);
 
   const text = extractTextAndCaption(content);
   const lower = text.toLowerCase();
@@ -414,8 +649,8 @@ async function handleIncomingMessage(
           `• Nama Pack Stiker: *${packLabel}*`,
           "",
           isPro
-            ? "Atur nama pack EXIF kapan saja di: https://capstone-botwa.vercel.app/account"
-            : "Mau kuota AI 50x/hari & ganti nama pack stiker pakai namamu sendiri? Upgrade ke Pro di: https://capstone-botwa.vercel.app/register?plan=pro",
+            ? `Atur nama pack EXIF kapan saja di: ${APP_URL}/account`
+            : `Mau kuota AI 50x/hari & ganti nama pack stiker pakai namamu sendiri? Upgrade ke Pro di: ${APP_URL}/register?plan=pro`,
         ].join("\n"),
       },
       { quoted: msg }
@@ -423,12 +658,19 @@ async function handleIncomingMessage(
     return;
   }
 
-  // 5. Ambil status akun tertaut (untuk Kuota Pro & Custom Pack EXIF)
+  // 5. Menu / Help (diproses sebelum handler foto agar reply foto dengan /help tetap membalas panduan)
+  if (lower === "/help" || lower === "/menu") {
+    await sock.sendMessage(remoteJid, { text: HELP_MESSAGE }, { quoted: msg });
+    return;
+  }
+
+  // 6. Ambil status akun tertaut (untuk Kuota Pro & Custom Pack EXIF)
   const linkedMember = await getLinkedUserByWaId(waId);
 
-  // 6. Handler Perintah Teks (/qc, /brat)
+  // 7. Handler Perintah Teks (/qc, /brat)
   if (lower === "/qc" || lower.startsWith("/qc ")) {
-    const quoteInput = text.slice(3).trim() || quotedText;
+    const explicitQuoteText = text.slice(3).trim();
+    const quoteInput = explicitQuoteText || quotedText;
     if (!quoteInput) {
       await sock.sendMessage(
         remoteJid,
@@ -440,12 +682,25 @@ async function handleIncomingMessage(
       return;
     }
 
+    const quoteAuthorName =
+      !explicitQuoteText && quotedText
+        ? await resolveQuotedAuthorName(
+            sock,
+            quotedCtx,
+            isGroup,
+            remoteJid,
+            waId,
+            profileName
+          )
+        : profileName;
+
     await handleQuoteChat(
       sock,
       msg,
       remoteJid,
       waId,
       profileName,
+      quoteAuthorName,
       messageId,
       quoteInput,
       linkedMember
@@ -477,8 +732,27 @@ async function handleIncomingMessage(
     return;
   }
 
-  // 7. Handler Foto Langsung ATAU Reply Foto dengan Perintah
-  if (hasDirectImage || (hasQuotedImage && isCommandText(text))) {
+  // 8. Handler Foto Langsung ATAU Reply Foto dengan Perintah Gambar
+  if (isImageCommand(lower)) {
+    if (!hasDirectImage && !hasQuotedImage) {
+      await sock.sendMessage(
+        remoteJid,
+        {
+          text: [
+            "📸 Perintah ini membutuhkan foto.",
+            "Kirim foto dengan caption perintah tersebut, atau *reply* sebuah foto dengan perintahnya.",
+            "",
+            "Contoh:",
+            "• Kirim/reply foto dengan `/stiker` atau `/crop`",
+            "• Kirim/reply foto dengan `/aimeme` atau `/roast`",
+            "• Kirim/reply foto dengan `/news Headline Berita`",
+          ].join("\n"),
+        },
+        { quoted: msg }
+      );
+      return;
+    }
+
     const targetMsg: WAMessage = hasDirectImage
       ? msg
       : ({
@@ -504,11 +778,6 @@ async function handleIncomingMessage(
     );
     return;
   }
-
-  // 8. Menu / Help
-  if (lower === "/help" || lower === "/menu") {
-    await sock.sendMessage(remoteJid, { text: HELP_MESSAGE }, { quoted: msg });
-  }
 }
 
 // ============================================================================
@@ -520,6 +789,7 @@ async function handleQuoteChat(
   remoteJid: string,
   waId: string,
   profileName: string,
+  quoteAuthorName: string,
   messageId: string,
   quoteText: string,
   linkedMember: LinkedWaMember | null
@@ -529,7 +799,7 @@ async function handleQuoteChat(
 
   try {
     const result = await createQuoteBubbleSticker({
-      name: profileName,
+      name: quoteAuthorName,
       text: quoteText,
       exif: resolveMemberExif(linkedMember),
     });
@@ -670,6 +940,8 @@ async function handleImageSticker(
     lower === "/roast" ||
     lower.startsWith("/roast ");
 
+  let aiQuotaRateKey: string | null = null;
+
   if (isAiCommand) {
     if (!settings.ai_meme_enabled) {
       await sock.sendMessage(
@@ -686,11 +958,12 @@ async function handleImageSticker(
       ? settings.daily_pro_ai_limit
       : settings.daily_ai_limit_per_user;
 
-    const quota = await consumeAiQuota(`wa:${waId}`, effectiveLimit);
+    const rateKey = `wa:${waId}`;
+    const quota = await consumeAiQuota(rateKey, effectiveLimit);
     if (!quota.allowed) {
       const upsellMsg = linkedMember?.isProActive
         ? `⏳ Kuota harian AI Vision Pro kamu sudah habis (${quota.limit}x/hari). Reset otomatis pukul 00:00 WIB.`
-        : `⏳ Kuota harian AI Vision gratis kamu sudah habis (${quota.limit}x/hari).\n\n👑 Mau kuota *${settings.daily_pro_ai_limit}x/hari* & ganti nama pack stiker pakai namamu sendiri? Upgrade ke *PRO CREATOR* di:\nhttps://capstone-botwa.vercel.app/register?plan=pro`;
+        : `⏳ Kuota harian AI Vision gratis kamu sudah habis (${quota.limit}x/hari).\n\n👑 Mau kuota *${settings.daily_pro_ai_limit}x/hari* & ganti nama pack stiker pakai namamu sendiri? Upgrade ke *PRO CREATOR* di:\n${APP_URL}/register?plan=pro`;
 
       await sock.sendMessage(
         remoteJid,
@@ -699,6 +972,8 @@ async function handleImageSticker(
       );
       return;
     }
+
+    aiQuotaRateKey = rateKey;
   }
 
   try {
@@ -788,6 +1063,10 @@ async function handleImageSticker(
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     console.error(`[WA-BOT Image - ${commandType}] Error:`, errMsg);
+
+    if (aiQuotaRateKey) {
+      await refundAiQuota(aiQuotaRateKey);
+    }
 
     await insertStickerLog({
       wa_id: waId,

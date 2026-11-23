@@ -60,6 +60,7 @@ export async function generateAiMemeCaption(
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(25_000),
     body: JSON.stringify({
       contents: [
         {

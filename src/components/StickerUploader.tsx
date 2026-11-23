@@ -293,7 +293,7 @@ export default function StickerUploader({
                   <span>{tab.label}</span>
                   {tab.badge && (
                     <span
-                      className={`px-1 py-0.2 text-[9px] font-bold ${
+                      className={`px-1 py-0.5 text-[9px] font-bold ${
                         isActive
                           ? "bg-[#B9F32B] text-[#161614]"
                           : "bg-[#161614] text-[#B9F32B]"

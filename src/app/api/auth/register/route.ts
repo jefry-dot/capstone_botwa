@@ -79,10 +79,18 @@ export async function POST(request: NextRequest) {
 
     if (profileErr) {
       console.error("[API /api/auth/register] Profile insert error:", profileErr);
+      try {
+        await adminDb.auth.admin.deleteUser(created.user.id);
+      } catch (cleanupErr) {
+        console.error(
+          "[API /api/auth/register] Failed to rollback auth user:",
+          cleanupErr
+        );
+      }
       return NextResponse.json(
         {
           error:
-            "Akun berhasil dibuat, namun tabel user_profiles belum tersedia. Pastikan supabase/premium_migration.sql sudah dijalankan.",
+            "Gagal menyimpan profil pengguna. Pastikan migrasi database sudah dijalankan lalu coba daftar kembali.",
         },
         { status: 500 }
       );

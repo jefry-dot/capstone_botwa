@@ -85,6 +85,25 @@ export async function GET() {
       totalStickersQuery,
     ]);
 
+    if (ordersRes.error) {
+      console.error(
+        "[API /api/user/me] Failed to load subscription_orders:",
+        ordersRes.error.message
+      );
+    }
+    if (logsRes.error) {
+      console.error(
+        "[API /api/user/me] Failed to load sticker_logs:",
+        logsRes.error.message
+      );
+    }
+    if (totalRes.error) {
+      console.error(
+        "[API /api/user/me] Failed to count sticker_logs:",
+        totalRes.error.message
+      );
+    }
+
     return NextResponse.json(
       {
         user,

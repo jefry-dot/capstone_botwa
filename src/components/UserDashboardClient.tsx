@@ -20,6 +20,7 @@ import {
   Receipt,
   Activity,
   QrCode,
+  X,
 } from "lucide-react";
 import type { CurrentUserSession } from "@/lib/user-auth";
 import type { SubscriptionOrderRow } from "@/types/database";
@@ -403,16 +404,26 @@ export default function UserDashboardClient({
             <ArrowUpRight className="h-3.5 w-3.5" />
           </a>
 
-          {!user.isProActive && (
-            <button
-              type="button"
-              onClick={() => setShowUpgradePanel((prev) => !prev)}
-              className="zine-btn inline-flex cursor-pointer items-center gap-1.5 bg-[#FFD646] px-4 py-2 font-mono text-xs font-bold uppercase text-[#161614]"
-            >
+          <button
+            type="button"
+            onClick={() => setShowUpgradePanel((prev) => !prev)}
+            className={`zine-btn inline-flex cursor-pointer items-center gap-1.5 px-4 py-2 font-mono text-xs font-bold uppercase text-[#161614] ${
+              showUpgradePanel ? "bg-[#EFE7D8]" : "bg-[#FFD646]"
+            }`}
+          >
+            {showUpgradePanel ? (
+              <X className="h-3.5 w-3.5" />
+            ) : (
               <Crown className="h-3.5 w-3.5" />
-              <span>Upgrade PRO</span>
-            </button>
-          )}
+            )}
+            <span>
+              {showUpgradePanel
+                ? "Tutup Panel PRO"
+                : user.isProActive
+                  ? "Perpanjang PRO"
+                  : "Upgrade PRO"}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -471,8 +482,8 @@ export default function UserDashboardClient({
         </div>
       </div>
 
-      {/* Panel Simulasi Upgrade PRO (Muncul saat tombol diklik atau ?upgrade=1) */}
-      {(showUpgradePanel || !user.isProActive) && (
+      {/* Panel Simulasi Upgrade PRO (Muncul saat tombol diklik atau default untuk akun Free) */}
+      {showUpgradePanel && (
         <div className="zine-card border-[#161614] bg-[#161614] p-6 text-[#F5F0E6]">
           <div className="flex flex-col justify-between gap-4 border-b border-[#F5F0E6]/20 pb-4 sm:flex-row sm:items-center">
             <div>
@@ -488,7 +499,7 @@ export default function UserDashboardClient({
                 instan menggunakan kode voucher demo atau simulasi QRIS.
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setUpgradeTab("voucher")}
@@ -510,6 +521,14 @@ export default function UserDashboardClient({
                 }`}
               >
                 Simulasi QRIS
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUpgradePanel(false)}
+                aria-label="Tutup panel upgrade PRO"
+                className="inline-flex cursor-pointer items-center justify-center border-2 border-[#F5F0E6]/30 p-1.5 text-[#F5F0E6] hover:border-[#EB3B2E] hover:bg-[#EB3B2E]"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -806,11 +825,23 @@ export default function UserDashboardClient({
                   <span>Simpan Branding Stiker WA</span>
                 </button>
               ) : (
-                <div className="flex items-center justify-between gap-3 border-2 border-dashed border-[#161614] bg-[#EFE7D8] p-3 text-xs">
+                <div className="flex flex-col justify-between gap-3 border-2 border-dashed border-[#161614] bg-[#EFE7D8] p-3 text-xs sm:flex-row sm:items-center">
                   <span className="font-medium text-[#3B3934]">
                     🔒 Fitur ini terkunci di paket Free. Upgrade ke Pro untuk
                     menghapus watermark AmbaBot Studio.
                   </span>
+                  {!showUpgradePanel && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUpgradePanel(true);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="zine-btn shrink-0 cursor-pointer bg-[#FFD646] px-3 py-1.5 font-mono text-[11px] font-bold uppercase text-[#161614]"
+                    >
+                      Upgrade Pro
+                    </button>
+                  )}
                 </div>
               )}
             </form>

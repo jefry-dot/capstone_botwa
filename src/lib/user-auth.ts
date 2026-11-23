@@ -72,9 +72,19 @@ export async function getCurrentUserProfile(): Promise<CurrentUserSession | null
 
     let profile = existing;
 
-    // Jika user ada di auth.users tapi belum punya user_profiles (misal admin mencoba buka /account),
-    // pastikan hanya buat otomatis jika bukan admin-only atau buat profil standar 'free'
+    // Jika user ada di auth.users tapi belum punya user_profiles, pastikan BUKAN akun admin-only
+    // agar akun admin tidak mencemari tabel user_profiles dan daftar member.
     if (!profile) {
+      const { data: adminProfile } = await adminDb
+        .from("admin_profiles")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle<{ id: string }>();
+
+      if (adminProfile) {
+        return null;
+      }
+
       const fullName =
         (typeof user.user_metadata?.full_name === "string" &&
           user.user_metadata.full_name.trim()) ||

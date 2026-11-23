@@ -1,9 +1,17 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
 
-// Konfigurasi fontconfig lokal agar librsvg/sharp tidak menghasilkan kotak-kotak (□□□) di container Linux Vercel
-const LOCAL_FONTS_DIR = path.join(process.cwd(), "fonts");
+// Konfigurasi fontconfig lokal agar librsvg/sharp tidak menghasilkan kotak-kotak (□□□) di container Linux Vercel/VPS
+const CANDIDATE_FONTS_DIRS = [
+  path.join(process.cwd(), "fonts"),
+  path.resolve(process.cwd(), "..", "fonts"),
+];
+const LOCAL_FONTS_DIR =
+  CANDIDATE_FONTS_DIRS.find((dir) =>
+    fs.existsSync(path.join(dir, "fonts.conf"))
+  ) ?? CANDIDATE_FONTS_DIRS[0];
 const LOCAL_FONTS_CONF = path.join(LOCAL_FONTS_DIR, "fonts.conf");
 
 if (fs.existsSync(LOCAL_FONTS_CONF)) {
@@ -62,8 +70,18 @@ function buildWhatsAppExifPayload(
   packName = "AmbaBot Studio",
   packPublisher = "Capstone Press 2026"
 ): Buffer {
+  const isDefaultPack =
+    packName === "AmbaBot Studio" && packPublisher === "Capstone Press 2026";
+  const packId = isDefaultPack
+    ? "com.ambabot.studio.capstone"
+    : `com.ambabot.studio.${crypto
+        .createHash("sha256")
+        .update(`${packName}:${packPublisher}`)
+        .digest("hex")
+        .slice(0, 12)}`;
+
   const json = JSON.stringify({
-    "sticker-pack-id": "com.ambabot.studio.capstone",
+    "sticker-pack-id": packId,
     "sticker-pack-name": packName,
     "sticker-pack-publisher": packPublisher,
     emojis: ["🎨", "🔥"],

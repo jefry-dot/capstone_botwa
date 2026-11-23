@@ -5,12 +5,15 @@ import {
   getBotSettings,
   getWebClientRateKey,
   consumeAiQuota,
+  refundAiQuota,
 } from "@/lib/bot-guard";
+import { getCurrentUserProfile } from "@/lib/user-auth";
 import {
   processImageToSticker,
   createQuoteBubbleSticker,
   createBratSticker,
   createBreakingNewsSticker,
+  type StickerExifOptions,
   type StickerResult,
 } from "@/lib/sticker-processor";
 import type { StickerCommandType, StickerLogInsert } from "@/types/database";
@@ -49,10 +52,17 @@ export async function POST(request: NextRequest) {
   const totalStart = Date.now();
   let commandType: StickerCommandType = "standard";
   let captionLog: string | null = null;
+  let currentUserId: string | null = null;
+  let consumedRateKey: string | null = null;
 
   try {
-    // 1. Cek konfigurasi live bot (Maintenance Mode)
-    const settings = await getBotSettings();
+    // 1. Cek konfigurasi live bot (Maintenance Mode) & sesi user web (opsional)
+    const [settings, currentUser] = await Promise.all([
+      getBotSettings(),
+      getCurrentUserProfile(),
+    ]);
+    currentUserId = currentUser?.id ?? null;
+
     if (settings.maintenance_mode) {
       return NextResponse.json(
         {
@@ -76,40 +86,8 @@ export async function POST(request: NextRequest) {
 
     commandType = rawCommand as StickerCommandType;
 
-    // 2. Guard khusus fitur AI Vision (toggle admin & kuota harian per IP)
-    let aiRemainingHeader: string | null = null;
-    if (commandType === "ai_meme") {
-      if (!settings.ai_meme_enabled) {
-        return NextResponse.json(
-          {
-            error:
-              "Fitur AI Meme / Roast sedang dinonaktifkan sementara oleh Admin. Silakan gunakan mode lain.",
-          },
-          { status: 503 }
-        );
-      }
-
-      const rateKey = getWebClientRateKey(request);
-      const quota = await consumeAiQuota(
-        rateKey,
-        settings.daily_web_ai_limit_per_ip
-      );
-
-      if (!quota.allowed) {
-        return NextResponse.json(
-          {
-            error: `Kuota AI Vision harian kamu sudah habis (maksimal ${quota.limit}x/hari per perangkat). Coba lagi besok atau gunakan mode Foto, Quote Chat, Brat, atau Breaking News.`,
-          },
-          { status: 429 }
-        );
-      }
-
-      aiRemainingHeader = String(quota.remaining);
-    }
-
+    // 2. Validasi seluruh input (file & teks wajib) SEBELUM memotong kuota AI
     let imageBuffer: Buffer | null = null;
-
-    // 3. Validasi file gambar jika mode membutuhkan foto
     if (!TEXT_ONLY_COMMANDS.has(commandType)) {
       const file = formData.get("file");
       if (!(file instanceof File) || file.size === 0) {
@@ -136,37 +114,98 @@ export async function POST(request: NextRequest) {
       imageBuffer = Buffer.from(await file.arrayBuffer());
     }
 
+    const quoteName = String(formData.get("quoteName") ?? "Mahasiswa").trim();
+    const quoteText = String(formData.get("quoteText") ?? "").trim();
+    const bratText = String(formData.get("bratText") ?? "").trim();
+    const topText = String(formData.get("topText") ?? "").trim();
+    const bottomText = String(formData.get("bottomText") ?? "").trim();
+
+    if (commandType === "quote_chat" && !quoteText) {
+      return NextResponse.json(
+        { error: "Isi pesan Quote Chat tidak boleh kosong." },
+        { status: 400 }
+      );
+    }
+    if (commandType === "brat_text" && !bratText) {
+      return NextResponse.json(
+        { error: "Teks Brat tidak boleh kosong." },
+        { status: 400 }
+      );
+    }
+    if (commandType === "meme_text" && !topText && !bottomText) {
+      return NextResponse.json(
+        {
+          error:
+            "Minimal salah satu dari Teks Atas atau Teks Bawah wajib diisi untuk mode Meme Klasik.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 3. Guard khusus fitur AI Vision (toggle admin & kuota harian sesuai akun/IP)
+    let aiRemainingHeader: string | null = null;
+    if (commandType === "ai_meme") {
+      if (!settings.ai_meme_enabled) {
+        return NextResponse.json(
+          {
+            error:
+              "Fitur AI Meme / Roast sedang dinonaktifkan sementara oleh Admin. Silakan gunakan mode lain.",
+          },
+          { status: 503 }
+        );
+      }
+
+      const rateKey = currentUser
+        ? currentUser.linkedWaId
+          ? `wa:${currentUser.linkedWaId}`
+          : `user:${currentUser.id}`
+        : getWebClientRateKey(request);
+
+      const dailyLimit = currentUser
+        ? currentUser.isProActive
+          ? settings.daily_pro_ai_limit
+          : settings.daily_ai_limit_per_user
+        : settings.daily_web_ai_limit_per_ip;
+
+      const quota = await consumeAiQuota(rateKey, dailyLimit);
+
+      if (!quota.allowed) {
+        return NextResponse.json(
+          {
+            error: `Kuota AI Vision harian kamu sudah habis (maksimal ${quota.limit}x/hari). Coba lagi besok atau gunakan mode Foto, Quote Chat, Brat, atau Breaking News.`,
+          },
+          { status: 429 }
+        );
+      }
+
+      consumedRateKey = rateKey;
+      aiRemainingHeader = String(quota.remaining);
+    }
+
+    const exif: StickerExifOptions | undefined = currentUser?.isProActive
+      ? {
+          packName: currentUser.customPackName,
+          packPublisher: currentUser.customPackAuthor,
+        }
+      : undefined;
+
     let result: StickerResult;
     let aiGeneratedCaptionHeader: string | null = null;
 
     switch (commandType) {
       case "quote_chat": {
-        const quoteName = String(formData.get("quoteName") ?? "Mahasiswa").trim();
-        const quoteText = String(formData.get("quoteText") ?? "").trim();
-        if (!quoteText) {
-          return NextResponse.json(
-            { error: "Isi pesan Quote Chat tidak boleh kosong." },
-            { status: 400 }
-          );
-        }
         captionLog = `${quoteName}: ${quoteText}`.slice(0, 200);
         result = await createQuoteBubbleSticker({
           name: quoteName || "Mahasiswa",
           text: quoteText,
+          exif,
         });
         break;
       }
 
       case "brat_text": {
-        const bratText = String(formData.get("bratText") ?? "").trim();
-        if (!bratText) {
-          return NextResponse.json(
-            { error: "Teks Brat tidak boleh kosong." },
-            { status: 400 }
-          );
-        }
         captionLog = bratText.slice(0, 200);
-        result = await createBratSticker({ text: bratText });
+        result = await createBratSticker({ text: bratText, exif });
         break;
       }
 
@@ -187,6 +226,7 @@ export async function POST(request: NextRequest) {
           topText: aiCaption.topText,
           bottomText: aiCaption.bottomText,
           mode: "contain",
+          exif,
         });
         break;
       }
@@ -196,39 +236,38 @@ export async function POST(request: NextRequest) {
           String(formData.get("newsHeadline") ?? "").trim() ||
           "BERITA TERKINI HARI INI";
         captionLog = headline.slice(0, 200);
-        result = await createBreakingNewsSticker(imageBuffer!, { headline });
+        result = await createBreakingNewsSticker(imageBuffer!, {
+          headline,
+          exif,
+        });
         break;
       }
 
       case "meme_text": {
-        const topText = String(formData.get("topText") ?? "").trim();
-        const bottomText = String(formData.get("bottomText") ?? "").trim();
-        if (!topText && !bottomText) {
-          return NextResponse.json(
-            {
-              error:
-                "Minimal salah satu dari Teks Atas atau Teks Bawah wajib diisi untuk mode Meme Klasik.",
-            },
-            { status: 400 }
-          );
-        }
         captionLog = `${topText} | ${bottomText}`.slice(0, 200);
         result = await processImageToSticker(imageBuffer!, {
           topText,
           bottomText,
           mode: "contain",
+          exif,
         });
         break;
       }
 
       case "crop": {
-        result = await processImageToSticker(imageBuffer!, { mode: "cover" });
+        result = await processImageToSticker(imageBuffer!, {
+          mode: "cover",
+          exif,
+        });
         break;
       }
 
       case "standard":
       default: {
-        result = await processImageToSticker(imageBuffer!, { mode: "contain" });
+        result = await processImageToSticker(imageBuffer!, {
+          mode: "contain",
+          exif,
+        });
         break;
       }
     }
@@ -240,6 +279,7 @@ export async function POST(request: NextRequest) {
 
     await logWebSticker({
       wa_id: null,
+      user_id: currentUserId,
       source: "web",
       command_type: commandType,
       caption_text: captionLog,
@@ -273,8 +313,13 @@ export async function POST(request: NextRequest) {
       err instanceof Error ? err.message : "Terjadi kesalahan server.";
     console.error(`[API /api/sticker - ${commandType}] Error:`, errMsg);
 
+    if (consumedRateKey) {
+      await refundAiQuota(consumedRateKey);
+    }
+
     await logWebSticker({
       wa_id: null,
+      user_id: currentUserId,
       source: "web",
       command_type: commandType,
       caption_text: captionLog,
@@ -283,6 +328,14 @@ export async function POST(request: NextRequest) {
       processing_time_ms: Date.now() - totalStart,
     });
 
-    return NextResponse.json({ error: errMsg }, { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          commandType === "ai_meme"
+            ? "Gagal memproses stiker AI Vision. Silakan coba lagi beberapa saat lagi."
+            : "Gagal memproses gambar menjadi stiker. Pastikan format gambar valid dan coba lagi.",
+      },
+      { status: 500 }
+    );
   }
 }

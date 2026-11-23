@@ -16,7 +16,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const isAdminRoute =
@@ -25,7 +25,15 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/stats") ||
     pathname.startsWith("/api/admin");
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  const isProtectedRoute =
+    isAdminRoute ||
+    pathname.startsWith("/account") ||
+    pathname.startsWith("/api/user");
+
+  if (!rawSupabaseUrl || !supabaseAnonKey) {
+    if (!isProtectedRoute) {
+      return NextResponse.next();
+    }
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
         { error: "Server auth configuration is missing." },
@@ -37,6 +45,18 @@ export async function middleware(request: NextRequest) {
       new URL(`${fallbackLogin}?error=config`, request.url)
     );
   }
+
+  // Pada halaman publik (/), hanya refresh sesi jika pengunjung memang memiliki cookie sesi Supabase
+  if (
+    !isProtectedRoute &&
+    !request.cookies.getAll().some((c) => c.name.startsWith("sb-"))
+  ) {
+    return NextResponse.next();
+  }
+
+  const supabaseUrl = rawSupabaseUrl
+    .replace(/\/rest\/v1\/?$/i, "")
+    .replace(/\/+$/, "");
 
   let supabaseResponse = NextResponse.next({ request });
 
@@ -62,7 +82,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user && isProtectedRoute) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
         {
@@ -85,6 +105,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
     "/dashboard",
     "/dashboard/:path*",
     "/admin",

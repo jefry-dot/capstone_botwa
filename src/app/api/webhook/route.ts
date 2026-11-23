@@ -6,13 +6,19 @@ import {
   getBotSettings,
   isWaUserBlocked,
   consumeAiQuota,
+  refundAiQuota,
+  getTodayAiUsage,
+  getLinkedUserByWaId,
+  verifyAndLinkWaCode,
   type BotSettings,
+  type LinkedWaMember,
 } from "@/lib/bot-guard";
 import {
   processImageToSticker,
   createQuoteBubbleSticker,
   createBratSticker,
   createBreakingNewsSticker,
+  type StickerExifOptions,
   type StickerResult,
 } from "@/lib/sticker-processor";
 import {
@@ -69,23 +75,74 @@ async function isDuplicateInSupabase(messageId: string): Promise<boolean> {
   }
 }
 
+const APP_URL = (
+  process.env.NEXT_PUBLIC_APP_URL || "https://capstone-botwa.vercel.app"
+).replace(/\/+$/, "");
+
 const HELP_MESSAGE = [
-  "🎨 *WA AI Sticker Studio — Daftar Perintah*",
+  "🎨 *AmbaBot Studio — Daftar Perintah*",
   "",
-  "📸 *Kirim Foto + Caption:*",
-  "• *(tanpa caption)* atau `/stiker` → Stiker transparan",
+  "📸 *Kirim Foto dengan Caption:*",
+  "• `/stiker` → Stiker transparan",
   "• `/crop` → Stiker penuh 1:1 (kotak)",
   "• `/stiker Atas | Bawah` → Meme klasik",
   "• `/aimeme` → AI otomatis bikin caption meme dari foto",
   "• `/roast` → AI otomatis roasting foto secara lucu",
   "• `/news Headline Berita` → Frame TV Breaking News",
   "",
-  "💬 *Kirim Teks Saja (Tanpa Foto):*",
+  "💬 *Kirim Teks Saja:*",
   "• `/qc Isi pesan chat` → Stiker bubble chat WA",
   "• `/brat teks kamu` → Stiker tipografi Brat hijau",
   "",
-  "Ketik `/help` kapan saja untuk melihat panduan ini lagi.",
+  "👑 *Akun & Paket Pro:*",
+  "• `/status` → Cek paket (Free/Pro), sisa kuota AI & Pack EXIF",
+  "• `/link <kode>` → Tautkan WA ke akun web untuk aktifkan Pro",
+  "",
+  `🌐 *Portal Akun & Upgrade Pro:* ${APP_URL}`,
 ].join("\n");
+
+function resolveMemberExif(
+  member: LinkedWaMember | null
+): StickerExifOptions | undefined {
+  if (!member?.isProActive) return undefined;
+  return {
+    packName: member.customPackName,
+    packPublisher: member.customPackAuthor,
+  };
+}
+
+function isImageCommand(lower: string): boolean {
+  return (
+    lower === "/stiker" ||
+    lower.startsWith("/stiker ") ||
+    lower === "/meme" ||
+    lower.startsWith("/meme ") ||
+    lower === "/crop" ||
+    lower.startsWith("/crop ") ||
+    lower === "/aimeme" ||
+    lower.startsWith("/aimeme ") ||
+    lower === "/roast" ||
+    lower.startsWith("/roast ") ||
+    lower === "/news" ||
+    lower.startsWith("/news ")
+  );
+}
+
+function isCommandText(text: string): boolean {
+  const lower = text.trim().toLowerCase();
+  return (
+    lower === "/help" ||
+    lower === "/menu" ||
+    lower === "/status" ||
+    lower === "/link" ||
+    lower.startsWith("/link ") ||
+    lower === "/qc" ||
+    lower.startsWith("/qc ") ||
+    lower === "/brat" ||
+    lower.startsWith("/brat ") ||
+    isImageCommand(lower)
+  );
+}
 
 // ============================================================================
 // GET: Verifikasi Webhook Meta WhatsApp Cloud API
@@ -212,7 +269,7 @@ async function insertStickerLog(log: StickerLogInsert) {
 }
 
 // ============================================================================
-// Router Utama Pesan Masuk (Teks & Gambar + Guard RBAC/Moderasi)
+// Router Utama Pesan Masuk (Strict Command-Only Mode + Pro Plan Sync)
 // ============================================================================
 async function processWhatsAppMessage(
   message: WhatsAppIncomingMessage,
@@ -220,6 +277,20 @@ async function processWhatsAppMessage(
 ) {
   const waId = message.from;
   const messageId = message.id;
+
+  const rawText =
+    message.type === "text"
+      ? (message.text?.body ?? "").trim()
+      : message.type === "image"
+        ? (message.image?.caption ?? "").trim()
+        : "";
+
+  // Strict command-only mode: abaikan seluruh pesan yang tidak diawali perintah valid
+  if (!isCommandText(rawText)) {
+    return;
+  }
+
+  const lower = rawText.toLowerCase();
 
   console.info(
     `[Webhook] Processing message id=${messageId} from=${waId} type=${message.type}`
@@ -242,160 +313,259 @@ async function processWhatsAppMessage(
   // 3. Cek Maintenance Mode global dari bot_settings
   const settings = await getBotSettings();
   if (settings.maintenance_mode) {
-    if (message.type !== "sticker") {
-      await sendTextMessage(
-        waId,
-        `🛠️ *Mode Pemeliharaan*\n${settings.maintenance_message}`
-      );
-    }
-    return;
-  }
-
-  if (message.type === "text") {
-    await handleTextMessage(
-      waId,
-      profileName,
-      messageId,
-      message.text?.body ?? ""
-    );
-    return;
-  }
-
-  if (message.type === "image" && message.image?.id) {
-    await handleImageMessage(
-      waId,
-      profileName,
-      messageId,
-      message.image.id,
-      message.image.caption ?? "",
-      settings
-    );
-    return;
-  }
-
-  if (message.type !== "sticker") {
     await sendTextMessage(
       waId,
-      "Format belum didukung bro 😅 Kirim *foto* (bisa ditambah caption `/aimeme`, `/roast`, `/news`, `/crop`) atau ketik `/qc <teks>` / `/brat <teks>`. Ketik `/help` untuk panduan."
+      `🛠️ *Mode Pemeliharaan*\n${settings.maintenance_message}`
+    );
+    return;
+  }
+
+  // 4. Menu / Help (diproses sebelum handler foto)
+  if (lower === "/help" || lower === "/menu") {
+    await sendTextMessage(waId, HELP_MESSAGE);
+    return;
+  }
+
+  // 5. Perintah Tautkan Akun Web (/link <kode>)
+  if (lower === "/link" || lower.startsWith("/link ")) {
+    const code = rawText.slice(5).trim();
+    await upsertWaUser(waId, profileName);
+    const res = await verifyAndLinkWaCode(code, waId);
+
+    if (!res.ok) {
+      await sendTextMessage(waId, `❌ ${res.message}`);
+      return;
+    }
+
+    const { member } = res;
+    const limit = member.isProActive
+      ? settings.daily_pro_ai_limit
+      : settings.daily_ai_limit_per_user;
+    const packLabel =
+      member.isProActive && member.customPackName
+        ? `${member.customPackName} (${member.customPackAuthor || "Capstone Press 2026"})`
+        : "AmbaBot Studio (default)";
+
+    await sendTextMessage(
+      waId,
+      [
+        `✅ *Berhasil terhubung ke akun ${member.fullName}!*`,
+        `• Email: ${member.email}`,
+        `• Paket: *${member.isProActive ? "PRO CREATOR 👑" : "FREE PLAN"}*`,
+        `• Kuota AI Harian: *${limit}x / hari*`,
+        `• Pack Stiker EXIF: *${packLabel}*`,
+        "",
+        "Semua stiker yang kamu buat di WA sekarang otomatis tersinkron ke halaman *Akun Saya* di website!",
+      ].join("\n")
+    );
+    return;
+  }
+
+  // 6. Perintah Cek Status Paket & Kuota (/status)
+  if (lower === "/status") {
+    const [member, usedToday] = await Promise.all([
+      getLinkedUserByWaId(waId),
+      getTodayAiUsage(`wa:${waId}`),
+    ]);
+    const isPro = Boolean(member?.isProActive);
+    const limit = isPro
+      ? settings.daily_pro_ai_limit
+      : settings.daily_ai_limit_per_user;
+    const remaining = Math.max(0, limit - usedToday);
+    const packLabel =
+      isPro && member?.customPackName
+        ? `${member.customPackName} — ${member.customPackAuthor || "Capstone Press 2026"}`
+        : "AmbaBot Studio (default)";
+
+    await sendTextMessage(
+      waId,
+      [
+        "📊 *Status Akun AmbaBot Studio*",
+        `• Akun Web: ${member ? `${member.fullName} (${member.email})` : "Belum ditautkan"}`,
+        `• Paket Aktif: *${isPro ? "PRO CREATOR 👑" : "FREE PLAN"}*`,
+        `• Kuota AI Hari Ini: *${usedToday}/${limit}* (sisa ${remaining}x)`,
+        `• Nama Pack Stiker: *${packLabel}*`,
+        "",
+        isPro
+          ? `Atur nama pack EXIF kapan saja di: ${APP_URL}/account`
+          : `Mau kuota AI 50x/hari & ganti nama pack stiker pakai namamu sendiri? Upgrade ke Pro di: ${APP_URL}/register?plan=pro`,
+      ].join("\n")
+    );
+    return;
+  }
+
+  // 7. Ambil status akun tertaut (untuk Kuota Pro & Custom Pack EXIF)
+  const linkedMember = await getLinkedUserByWaId(waId);
+
+  // 8. Perintah Stiker Teks (/qc, /brat)
+  if (lower === "/qc" || lower.startsWith("/qc ")) {
+    await handleQuoteChatMessage(
+      waId,
+      profileName,
+      messageId,
+      rawText.slice(3).trim(),
+      linkedMember
+    );
+    return;
+  }
+
+  if (lower === "/brat" || lower.startsWith("/brat ")) {
+    await handleBratMessage(
+      waId,
+      profileName,
+      messageId,
+      rawText.slice(5).trim(),
+      linkedMember
+    );
+    return;
+  }
+
+  // 9. Perintah Stiker Gambar (/stiker, /meme, /crop, /aimeme, /roast, /news)
+  if (isImageCommand(lower)) {
+    if (message.type === "image" && message.image?.id) {
+      await handleImageMessage(
+        waId,
+        profileName,
+        messageId,
+        message.image.id,
+        rawText,
+        settings,
+        linkedMember
+      );
+      return;
+    }
+
+    await sendTextMessage(
+      waId,
+      [
+        "📸 Perintah ini membutuhkan foto.",
+        "Kirim foto dengan caption perintah tersebut.",
+        "",
+        "Contoh:",
+        "• Kirim foto dengan caption `/stiker` atau `/crop`",
+        "• Kirim foto dengan caption `/aimeme` atau `/roast`",
+        "• Kirim foto dengan caption `/news Headline Berita`",
+      ].join("\n")
     );
   }
 }
 
 // ============================================================================
-// A. Handler Pesan Teks (/qc, /brat, /help)
+// A. Handler Pesan Teks (/qc, /brat)
 // ============================================================================
-async function handleTextMessage(
+async function handleQuoteChatMessage(
   waId: string,
   profileName: string,
   messageId: string,
-  rawText: string
+  quoteText: string,
+  linkedMember: LinkedWaMember | null
 ) {
-  const trimmed = rawText.trim();
-  const lower = trimmed.toLowerCase();
-
-  if (lower === "/qc" || lower.startsWith("/qc ")) {
-    const quoteText = trimmed.slice(3).trim();
-    if (!quoteText) {
-      await sendTextMessage(
-        waId,
-        "Format salah. Contoh penggunaan:\n`/qc Besok bimbingan jam 8 jangan telat!`"
-      );
-      return;
-    }
-
-    await upsertWaUser(waId, profileName);
-    const startTime = Date.now();
-
-    try {
-      const result = await createQuoteBubbleSticker({
-        name: profileName,
-        text: quoteText,
-      });
-
-      const mediaId = await uploadStickerMedia(result.buffer);
-      await sendStickerMessage(waId, mediaId);
-
-      await insertStickerLog({
-        wa_id: waId,
-        wa_message_id: messageId,
-        source: "whatsapp",
-        command_type: "quote_chat",
-        caption_text: quoteText.slice(0, 200),
-        status: "success",
-        processing_time_ms: result.processingTimeMs,
-        file_size_kb: result.sizeKb,
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[Webhook /qc] Error:", errMsg);
-
-      await insertStickerLog({
-        wa_id: waId,
-        wa_message_id: messageId,
-        source: "whatsapp",
-        command_type: "quote_chat",
-        caption_text: quoteText.slice(0, 200),
-        status: "failed",
-        error_message: errMsg.slice(0, 500),
-        processing_time_ms: Date.now() - startTime,
-      });
-
-      await sendTextMessage(waId, "Gagal bikin stiker /qc nih, coba lagi ya.");
-    }
+  if (!quoteText) {
+    await sendTextMessage(
+      waId,
+      "Format salah. Contoh penggunaan:\n`/qc Besok bimbingan jam 8 jangan telat!`"
+    );
     return;
   }
 
-  if (lower === "/brat" || lower.startsWith("/brat ")) {
-    const bratText = trimmed.slice(5).trim();
-    if (!bratText) {
-      await sendTextMessage(
-        waId,
-        "Format salah. Contoh penggunaan:\n`/brat lagi pusing revisi bab 4`"
-      );
-      return;
-    }
+  await upsertWaUser(waId, profileName);
+  const startTime = Date.now();
 
-    await upsertWaUser(waId, profileName);
-    const startTime = Date.now();
+  try {
+    const result = await createQuoteBubbleSticker({
+      name: profileName,
+      text: quoteText,
+      exif: resolveMemberExif(linkedMember),
+    });
 
-    try {
-      const result = await createBratSticker({ text: bratText });
-      const mediaId = await uploadStickerMedia(result.buffer);
-      await sendStickerMessage(waId, mediaId);
+    const mediaId = await uploadStickerMedia(result.buffer);
+    await sendStickerMessage(waId, mediaId);
 
-      await insertStickerLog({
-        wa_id: waId,
-        wa_message_id: messageId,
-        source: "whatsapp",
-        command_type: "brat_text",
-        caption_text: bratText.slice(0, 200),
-        status: "success",
-        processing_time_ms: result.processingTimeMs,
-        file_size_kb: result.sizeKb,
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[Webhook /brat] Error:", errMsg);
+    await insertStickerLog({
+      wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
+      wa_message_id: messageId,
+      source: "whatsapp",
+      command_type: "quote_chat",
+      caption_text: quoteText.slice(0, 200),
+      status: "success",
+      processing_time_ms: result.processingTimeMs,
+      file_size_kb: result.sizeKb,
+    });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error("[Webhook /qc] Error:", errMsg);
 
-      await insertStickerLog({
-        wa_id: waId,
-        wa_message_id: messageId,
-        source: "whatsapp",
-        command_type: "brat_text",
-        caption_text: bratText.slice(0, 200),
-        status: "failed",
-        error_message: errMsg.slice(0, 500),
-        processing_time_ms: Date.now() - startTime,
-      });
+    await insertStickerLog({
+      wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
+      wa_message_id: messageId,
+      source: "whatsapp",
+      command_type: "quote_chat",
+      caption_text: quoteText.slice(0, 200),
+      status: "failed",
+      error_message: errMsg.slice(0, 500),
+      processing_time_ms: Date.now() - startTime,
+    });
 
-      await sendTextMessage(waId, "Gagal bikin stiker /brat nih, coba lagi ya.");
-    }
+    await sendTextMessage(waId, "Gagal bikin stiker /qc nih, coba lagi ya.");
+  }
+}
+
+async function handleBratMessage(
+  waId: string,
+  profileName: string,
+  messageId: string,
+  bratText: string,
+  linkedMember: LinkedWaMember | null
+) {
+  if (!bratText) {
+    await sendTextMessage(
+      waId,
+      "Format salah. Contoh penggunaan:\n`/brat lagi pusing revisi bab 4`"
+    );
     return;
   }
 
-  // Hanya balas panduan jika user mengetik /help atau /menu; abaikan obrolan biasa
-  if (lower === "/help" || lower === "/menu") {
-    await sendTextMessage(waId, HELP_MESSAGE);
+  await upsertWaUser(waId, profileName);
+  const startTime = Date.now();
+
+  try {
+    const result = await createBratSticker({
+      text: bratText,
+      exif: resolveMemberExif(linkedMember),
+    });
+    const mediaId = await uploadStickerMedia(result.buffer);
+    await sendStickerMessage(waId, mediaId);
+
+    await insertStickerLog({
+      wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
+      wa_message_id: messageId,
+      source: "whatsapp",
+      command_type: "brat_text",
+      caption_text: bratText.slice(0, 200),
+      status: "success",
+      processing_time_ms: result.processingTimeMs,
+      file_size_kb: result.sizeKb,
+    });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error("[Webhook /brat] Error:", errMsg);
+
+    await insertStickerLog({
+      wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
+      wa_message_id: messageId,
+      source: "whatsapp",
+      command_type: "brat_text",
+      caption_text: bratText.slice(0, 200),
+      status: "failed",
+      error_message: errMsg.slice(0, 500),
+      processing_time_ms: Date.now() - startTime,
+    });
+
+    await sendTextMessage(waId, "Gagal bikin stiker /brat nih, coba lagi ya.");
   }
 }
 
@@ -408,12 +578,14 @@ async function handleImageMessage(
   messageId: string,
   incomingMediaId: string,
   rawCaption: string,
-  settings: BotSettings
+  settings: BotSettings,
+  linkedMember: LinkedWaMember | null
 ) {
   await upsertWaUser(waId, profileName);
 
   const caption = rawCaption.trim();
   const lower = caption.toLowerCase();
+  const exif = resolveMemberExif(linkedMember);
 
   const isAiCommand =
     lower === "/aimeme" ||
@@ -421,28 +593,35 @@ async function handleImageMessage(
     lower === "/roast" ||
     lower.startsWith("/roast ");
 
+  let aiQuotaRateKey: string | null = null;
+
   // Guard khusus AI Vision sebelum download gambar dari Meta (hemat bandwidth & kuota Gemini)
   if (isAiCommand) {
     if (!settings.ai_meme_enabled) {
       await sendTextMessage(
         waId,
-        "Fitur AI Meme/Roast (`/aimeme`, `/roast`) sedang dinonaktifkan sementara oleh Admin. Kamu tetap bisa pakai mode `/stiker`, `/crop`, `/news`, `/qc`, atau `/brat` ya!"
+        "⏸️ Fitur AI Vision (`/aimeme` & `/roast`) sedang dinonaktifkan sementara oleh Admin. Mode `/stiker`, `/crop`, `/news`, `/qc`, dan `/brat` tetap bisa dipakai!"
       );
       return;
     }
 
-    const quota = await consumeAiQuota(
-      `wa:${waId}`,
-      settings.daily_ai_limit_per_user
-    );
+    const effectiveLimit = linkedMember?.isProActive
+      ? settings.daily_pro_ai_limit
+      : settings.daily_ai_limit_per_user;
+
+    const rateKey = `wa:${waId}`;
+    const quota = await consumeAiQuota(rateKey, effectiveLimit);
 
     if (!quota.allowed) {
-      await sendTextMessage(
-        waId,
-        `Kuota AI Vision harian kamu sudah habis (maksimal ${quota.limit}x/hari). Coba lagi besok ya, atau gunakan mode non-AI seperti \`/stiker\`, \`/news\`, \`/qc\`, dan \`/brat\`!`
-      );
+      const upsellMsg = linkedMember?.isProActive
+        ? `⏳ Kuota harian AI Vision Pro kamu sudah habis (${quota.limit}x/hari). Reset otomatis pukul 00:00 WIB.`
+        : `⏳ Kuota harian AI Vision gratis kamu sudah habis (${quota.limit}x/hari).\n\n👑 Mau kuota *${settings.daily_pro_ai_limit}x/hari* & ganti nama pack stiker pakai namamu sendiri? Upgrade ke *PRO CREATOR* di:\n${APP_URL}/register?plan=pro`;
+
+      await sendTextMessage(waId, upsellMsg);
       return;
     }
+
+    aiQuotaRateKey = rateKey;
   }
 
   let commandType: StickerCommandType = "standard";
@@ -469,6 +648,7 @@ async function handleImageMessage(
         topText: aiCaption.topText,
         bottomText: aiCaption.bottomText,
         mode: "contain",
+        exif,
       });
     } else if (lower === "/news" || lower.startsWith("/news ")) {
       commandType = "breaking_news";
@@ -476,10 +656,16 @@ async function handleImageMessage(
         caption.slice(5).trim() || "BERITA TERKINI HARI INI";
       loggedCaption = headline.slice(0, 200);
 
-      result = await createBreakingNewsSticker(imageBuffer, { headline });
+      result = await createBreakingNewsSticker(imageBuffer, {
+        headline,
+        exif,
+      });
     } else if (lower === "/crop" || lower.startsWith("/crop ")) {
       commandType = "crop";
-      result = await processImageToSticker(imageBuffer, { mode: "cover" });
+      result = await processImageToSticker(imageBuffer, {
+        mode: "cover",
+        exif,
+      });
     } else if (caption.includes("|")) {
       commandType = "meme_text";
       const cleaned = caption.replace(/^\/(stiker|meme)\s*/i, "");
@@ -491,10 +677,14 @@ async function handleImageMessage(
         topText,
         bottomText,
         mode: "contain",
+        exif,
       });
     } else {
       commandType = "standard";
-      result = await processImageToSticker(imageBuffer, { mode: "contain" });
+      result = await processImageToSticker(imageBuffer, {
+        mode: "contain",
+        exif,
+      });
     }
 
     const totalProcessMs =
@@ -507,6 +697,7 @@ async function handleImageMessage(
 
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: commandType,
@@ -519,8 +710,13 @@ async function handleImageMessage(
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     console.error(`[Webhook Image - ${commandType}] Error:`, errMsg);
 
+    if (aiQuotaRateKey) {
+      await refundAiQuota(aiQuotaRateKey);
+    }
+
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: commandType,

@@ -10,9 +10,19 @@ import {
   Link2,
 } from "lucide-react";
 
-const WA_BOT_NUMBER =
-  process.env.NEXT_PUBLIC_WA_BOT_NUMBER || "6285959632681";
-const WA_BOT_DISPLAY = "+62 859-5963-2681";
+const WA_BOT_NUMBER = (
+  process.env.NEXT_PUBLIC_WA_BOT_NUMBER || "6285959632681"
+).replace(/\D/g, "");
+
+function formatPhoneDisplay(rawDigits: string): string {
+  if (rawDigits.startsWith("62") && rawDigits.length >= 11) {
+    const local = rawDigits.slice(2);
+    return `+62 ${local.slice(0, 3)}-${local.slice(3, 7)}-${local.slice(7)}`;
+  }
+  return `+${rawDigits}`;
+}
+
+const WA_BOT_DISPLAY = formatPhoneDisplay(WA_BOT_NUMBER);
 
 function buildWaLink(prefillText: string) {
   return `https://wa.me/${WA_BOT_NUMBER}?text=${encodeURIComponent(

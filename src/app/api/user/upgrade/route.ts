@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
         ? body.voucherCode.trim().toUpperCase()
         : "";
 
+    const adminDb = getSupabaseAdmin();
+
     if (method === "voucher") {
       if (!VALID_DEMO_VOUCHERS.has(voucherCode)) {
         return NextResponse.json(
@@ -37,18 +39,36 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
+      const { data: existingClaim } = await adminDb
+        .from("subscription_orders")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("payment_method", "voucher")
+        .eq("voucher_code", voucherCode)
+        .limit(1);
+
+      if (existingClaim && existingClaim.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Kode voucher ${voucherCode} sudah pernah kamu klaim. Gunakan kode voucher lain atau simulasi QRIS untuk perpanjangan.`,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // Perpanjang 30 hari dari tanggal sekarang (atau dari pro_expires_at jika masih aktif)
+    const parsedExpiry = user.proExpiresAt
+      ? new Date(user.proExpiresAt).getTime()
+      : Number.NaN;
     const baseTime =
-      user.isProActive && user.proExpiresAt
-        ? Math.max(Date.now(), new Date(user.proExpiresAt).getTime())
+      user.isProActive && !Number.isNaN(parsedExpiry)
+        ? Math.max(Date.now(), parsedExpiry)
         : Date.now();
     const nextExpiresAt = new Date(
       baseTime + PRO_DURATION_DAYS * 24 * 60 * 60 * 1000
     ).toISOString();
-
-    const adminDb = getSupabaseAdmin();
 
     const { error: updateErr } = await adminDb
       .from("user_profiles")

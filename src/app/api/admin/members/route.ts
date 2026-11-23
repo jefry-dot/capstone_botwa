@@ -21,6 +21,15 @@ export async function GET(request: NextRequest) {
     const planFilter = request.nextUrl.searchParams.get("plan") ?? "all";
 
     const adminDb = getSupabaseAdmin();
+    const nowIso = new Date().toISOString();
+
+    // Sinkronkan akun PRO yang masa aktifnya sudah lewat agar filter PRO/Free selalu akurat
+    await adminDb
+      .from("user_profiles")
+      .update({ plan: "free", updated_at: nowIso })
+      .eq("plan", "pro")
+      .lt("pro_expires_at", nowIso);
+
     let query = adminDb
       .from("user_profiles")
       .select("*")

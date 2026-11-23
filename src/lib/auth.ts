@@ -22,14 +22,16 @@ interface AdminProfileRow {
 }
 
 export async function createSupabaseServerClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url || !anonKey) {
+  if (!rawUrl || !anonKey) {
     throw new Error(
       "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables."
     );
   }
+
+  const url = rawUrl.replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "");
 
   const cookieStore = await cookies();
 
@@ -110,7 +112,22 @@ export async function requireAdminPage(
   const admin = await getCurrentAdmin();
 
   if (!admin) {
-    redirect(`/admin/login?next=${encodeURIComponent(currentPath)}`);
+    let hasNonAdminSession = false;
+    try {
+      const supabase = await createSupabaseServerClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      hasNonAdminSession = Boolean(user);
+    } catch {
+      hasNonAdminSession = false;
+    }
+
+    const params = new URLSearchParams({ next: currentPath });
+    if (hasNonAdminSession) {
+      params.set("error", "forbidden");
+    }
+    redirect(`/admin/login?${params.toString()}`);
   }
 
   if (!allowedRoles.includes(admin.role)) {

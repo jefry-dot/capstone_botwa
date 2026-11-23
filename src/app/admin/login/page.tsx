@@ -189,14 +189,14 @@ function AdminLoginForm() {
         {/* Footer Info */}
         <div className="mt-6 border-t-2 border-dashed border-[#161614]/25 pt-4 text-center">
           <p className="text-[11px] text-[#5C584F]">
-            Pengguna biasa tidak perlu login untuk membuat stiker.
+            Pengguna biasa tidak perlu login admin untuk memakai Bot WhatsApp.
           </p>
           <Link
-            href="/studio"
+            href="/"
             className="mt-2.5 inline-flex items-center gap-1.5 font-mono text-xs font-bold uppercase text-[#161614] hover:underline"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Buka Web Sticker Studio</span>
+            <span>Kembali ke Halaman Utama</span>
           </Link>
         </div>
       </div>

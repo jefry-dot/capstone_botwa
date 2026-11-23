@@ -13,16 +13,39 @@ export async function POST() {
   if (!auth.ok) return auth.response;
 
   try {
-    const code = String(crypto.randomInt(100000, 999999));
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-
     const adminDb = getSupabaseAdmin();
+    const nowIso = new Date().toISOString();
+
+    let code = "";
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = String(crypto.randomInt(100000, 1000000));
+      const { data: existing } = await adminDb
+        .from("user_profiles")
+        .select("id")
+        .eq("link_code", candidate)
+        .gt("link_code_expires_at", nowIso)
+        .neq("id", auth.user.id)
+        .limit(1);
+
+      if (!existing || existing.length === 0) {
+        code = candidate;
+        break;
+      }
+    }
+
+    if (!code) {
+      throw new Error(
+        "Gagal menghasilkan kode verifikasi unik. Silakan coba lagi."
+      );
+    }
+
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const { error } = await adminDb
       .from("user_profiles")
       .update({
         link_code: code,
         link_code_expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso,
       })
       .eq("id", auth.user.id);
 
