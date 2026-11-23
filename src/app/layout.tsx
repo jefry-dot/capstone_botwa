@@ -61,8 +61,8 @@ export default async function RootLayout({
                   <Link href="/studio" className="w-fit hover:underline">
                     02. Web Sticker Studio
                   </Link>
-                  <Link href="/admin/login" className="w-fit hover:underline">
-                    03. Portal Admin &amp; Telemetri
+                  <Link href="/#cara-pakai" className="w-fit hover:underline">
+                    03. Panduan Bot WhatsApp
                   </Link>
                 </div>
               </div>

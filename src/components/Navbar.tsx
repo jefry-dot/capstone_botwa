@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
-  Lock,
   LogOut,
   ShieldCheck,
   Loader2,
@@ -78,7 +77,7 @@ export default function Navbar({ admin = null }: NavbarProps) {
             <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
 
-          {admin ? (
+          {admin && (
             <>
               <Link
                 href="/dashboard"
@@ -102,7 +101,7 @@ export default function Navbar({ admin = null }: NavbarProps) {
                 onClick={handleLogout}
                 disabled={isLoggingOut}
                 title={`Logout (${admin.email})`}
-                className="flex items-center gap-1 border-2 border-[#161614] bg-[#FFFDF7] px-2.5 py-1.5 font-mono text-xs font-bold uppercase text-[#161614] transition-colors hover:bg-[#EB3B2E] hover:text-white disabled:opacity-60"
+                className="flex cursor-pointer items-center gap-1 border-2 border-[#161614] bg-[#FFFDF7] px-2.5 py-1.5 font-mono text-xs font-bold uppercase text-[#161614] transition-colors hover:bg-[#EB3B2E] hover:text-white disabled:opacity-60"
               >
                 {isLoggingOut ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -112,18 +111,6 @@ export default function Navbar({ admin = null }: NavbarProps) {
                 <span className="hidden sm:inline">Keluar</span>
               </button>
             </>
-          ) : (
-            <Link
-              href="/admin/login"
-              className={`flex items-center gap-1.5 border-2 border-[#161614] px-2.5 py-1.5 font-mono text-xs font-bold uppercase transition-colors ${
-                pathname === "/admin/login"
-                  ? "bg-[#161614] text-[#F5F0E6]"
-                  : "bg-transparent text-[#3B3934] hover:bg-[#161614] hover:text-[#F5F0E6]"
-              }`}
-            >
-              <Lock className="h-3 w-3" />
-              <span>Admin</span>
-            </Link>
           )}
         </nav>
       </div>
