@@ -15,25 +15,34 @@ if (fs.existsSync(LOCAL_FONTS_CONF)) {
   }
 }
 
+export interface StickerExifOptions {
+  packName?: string | null;
+  packPublisher?: string | null;
+}
+
 export interface StickerOptions {
   topText?: string;
   bottomText?: string;
   mode?: "contain" | "cover";
+  exif?: StickerExifOptions;
 }
 
 export interface QuoteBubbleOptions {
   name: string;
   text: string;
   time?: string;
+  exif?: StickerExifOptions;
 }
 
 export interface BratStickerOptions {
   text: string;
+  exif?: StickerExifOptions;
 }
 
 export interface BreakingNewsOptions {
   headline: string;
   time?: string;
+  exif?: StickerExifOptions;
 }
 
 export interface StickerResult {
@@ -69,7 +78,10 @@ function buildWhatsAppExifPayload(
   return Buffer.concat([exifHeader, jsonBuf]);
 }
 
-function injectWhatsAppStickerExif(webpBuffer: Buffer): Buffer {
+function injectWhatsAppStickerExif(
+  webpBuffer: Buffer,
+  exif?: StickerExifOptions
+): Buffer {
   try {
     if (
       webpBuffer.length < 20 ||
@@ -79,7 +91,9 @@ function injectWhatsAppStickerExif(webpBuffer: Buffer): Buffer {
       return webpBuffer;
     }
 
-    const exifData = buildWhatsAppExifPayload();
+    const packName = exif?.packName?.trim() || "AmbaBot Studio";
+    const packPublisher = exif?.packPublisher?.trim() || "Capstone Press 2026";
+    const exifData = buildWhatsAppExifPayload(packName, packPublisher);
     const exifPad = exifData.length % 2 === 1 ? Buffer.alloc(1) : Buffer.alloc(0);
     const exifChunkHeader = Buffer.alloc(8);
     exifChunkHeader.write("EXIF", 0, 4, "ascii");
@@ -214,7 +228,8 @@ function getInitials(name: string): string {
 
 async function encodeWebpUnderLimit(
   preparedPng: Buffer,
-  startTime: number
+  startTime: number,
+  exif?: StickerExifOptions
 ): Promise<StickerResult> {
   let finalBuffer: Buffer | null = null;
 
@@ -233,7 +248,7 @@ async function encodeWebpUnderLimit(
     throw new Error("Failed to encode WebP sticker.");
   }
 
-  const brandedBuffer = injectWhatsAppStickerExif(finalBuffer);
+  const brandedBuffer = injectWhatsAppStickerExif(finalBuffer, exif);
 
   return {
     buffer: brandedBuffer,
@@ -315,7 +330,7 @@ export async function processImageToSticker(
     : basePipeline;
 
   const preparedPng = await composed.png().toBuffer();
-  return encodeWebpUnderLimit(preparedPng, startTime);
+  return encodeWebpUnderLimit(preparedPng, startTime, options.exif);
 }
 
 // ============================================================================
@@ -413,7 +428,7 @@ export async function createQuoteBubbleSticker(
   `;
 
   const preparedPng = await sharp(Buffer.from(svg)).png().toBuffer();
-  return encodeWebpUnderLimit(preparedPng, startTime);
+  return encodeWebpUnderLimit(preparedPng, startTime, options.exif);
 }
 
 // ============================================================================
@@ -479,7 +494,7 @@ export async function createBratSticker(
     .png()
     .toBuffer();
 
-  return encodeWebpUnderLimit(preparedPng, startTime);
+  return encodeWebpUnderLimit(preparedPng, startTime, options.exif);
 }
 
 // ============================================================================
@@ -583,5 +598,5 @@ export async function createBreakingNewsSticker(
     .png()
     .toBuffer();
 
-  return encodeWebpUnderLimit(preparedPng, startTime);
+  return encodeWebpUnderLimit(preparedPng, startTime, options.exif);
 }

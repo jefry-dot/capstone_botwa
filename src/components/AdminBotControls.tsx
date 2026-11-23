@@ -17,6 +17,7 @@ interface BotSettingsState {
   ai_meme_enabled: boolean;
   daily_ai_limit_per_user: number;
   daily_web_ai_limit_per_ip: number;
+  daily_pro_ai_limit?: number;
   maintenance_message: string;
   updated_at?: string;
 }
@@ -95,6 +96,7 @@ export default function AdminBotControls({
           ai_meme_enabled: settings.ai_meme_enabled,
           daily_ai_limit_per_user: Number(settings.daily_ai_limit_per_user),
           daily_web_ai_limit_per_ip: Number(settings.daily_web_ai_limit_per_ip),
+          daily_pro_ai_limit: Number(settings.daily_pro_ai_limit ?? 50),
           maintenance_message: settings.maintenance_message,
         }),
       });
@@ -275,13 +277,13 @@ export default function AdminBotControls({
             </div>
 
             {/* Limit Kuota AI Harian */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <label
                   htmlFor="limit-wa-ai"
                   className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
                 >
-                  Limit AI Harian per User WA
+                  Limit AI WA (Free)
                 </label>
                 <input
                   id="limit-wa-ai"
@@ -305,7 +307,40 @@ export default function AdminBotControls({
                   className="w-full border-2 border-[#161614] bg-[#FFFDF7] px-3.5 py-2.5 font-mono text-sm text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
                 />
                 <p className="mt-1 font-mono text-[11px] text-[#5C584F]">
-                  Reset otomatis tiap pukul 00:00 WIB.
+                  Reset 00:00 WIB.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="limit-pro-ai"
+                  className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
+                >
+                  Limit AI WA (PRO)
+                </label>
+                <input
+                  id="limit-pro-ai"
+                  type="number"
+                  min={0}
+                  max={10000}
+                  value={settings.daily_pro_ai_limit ?? 50}
+                  onChange={(e) =>
+                    setSettings((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            daily_pro_ai_limit: Math.max(
+                              0,
+                              Number.parseInt(e.target.value || "0", 10)
+                            ),
+                          }
+                        : prev
+                    )
+                  }
+                  className="w-full border-2 border-[#161614] bg-[#FFD646]/35 px-3.5 py-2.5 font-mono text-sm font-bold text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
+                />
+                <p className="mt-1 font-mono text-[11px] text-[#5C584F]">
+                  Khusus akun PRO tertaut.
                 </p>
               </div>
 
@@ -314,7 +349,7 @@ export default function AdminBotControls({
                   htmlFor="limit-web-ai"
                   className="mb-1.5 block font-mono text-xs font-bold uppercase text-[#161614]"
                 >
-                  Limit AI Harian per IP Web
+                  Limit AI API Web
                 </label>
                 <input
                   id="limit-web-ai"
@@ -338,7 +373,7 @@ export default function AdminBotControls({
                   className="w-full border-2 border-[#161614] bg-[#FFFDF7] px-3.5 py-2.5 font-mono text-sm text-[#161614] focus:bg-[#FFFBEB] focus:outline-none"
                 />
                 <p className="mt-1 font-mono text-[11px] text-[#5C584F]">
-                  Mencegah spam request Gemini dari pengunjung anonim.
+                  Batas request per IP.
                 </p>
               </div>
             </div>

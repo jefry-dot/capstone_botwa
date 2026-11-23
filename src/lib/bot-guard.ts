@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import type { UserPlan, UserProfileRow } from "@/types/database";
 
 export interface BotSettings {
   id: number;
@@ -8,6 +9,7 @@ export interface BotSettings {
   ai_meme_enabled: boolean;
   daily_ai_limit_per_user: number;
   daily_web_ai_limit_per_ip: number;
+  daily_pro_ai_limit: number;
   maintenance_message: string;
   updated_at: string;
 }
@@ -19,31 +21,50 @@ export interface AiQuotaResult {
   limit: number;
 }
 
+export interface LinkedWaMember {
+  userId: string;
+  email: string;
+  fullName: string;
+  plan: UserPlan;
+  isProActive: boolean;
+  proExpiresAt: string | null;
+  customPackName: string | null;
+  customPackAuthor: string | null;
+}
+
 const DEFAULT_BOT_SETTINGS: BotSettings = {
   id: 1,
   maintenance_mode: false,
   ai_meme_enabled: true,
   daily_ai_limit_per_user: 10,
   daily_web_ai_limit_per_ip: 5,
+  daily_pro_ai_limit: 50,
   maintenance_message:
     "Bot sedang dalam pemeliharaan sementara. Silakan coba lagi beberapa saat lagi.",
   updated_at: new Date(0).toISOString(),
 };
 
+function getTodayWibDate(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 /**
  * Ambil konfigurasi live bot dari tabel public.bot_settings (row id = 1).
- * Fallback aman ke default jika tabel migrasi belum dijalankan.
+ * Fallback aman ke default jika tabel atau kolom migrasi belum dijalankan.
  */
 export async function getBotSettings(): Promise<BotSettings> {
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("bot_settings")
-      .select(
-        "id, maintenance_mode, ai_meme_enabled, daily_ai_limit_per_user, daily_web_ai_limit_per_ip, maintenance_message, updated_at"
-      )
+      .select("*")
       .eq("id", 1)
-      .maybeSingle<BotSettings>();
+      .maybeSingle<Partial<BotSettings>>();
 
     if (error || !data) {
       if (error) {
@@ -52,7 +73,14 @@ export async function getBotSettings(): Promise<BotSettings> {
       return DEFAULT_BOT_SETTINGS;
     }
 
-    return data;
+    return {
+      ...DEFAULT_BOT_SETTINGS,
+      ...data,
+      daily_pro_ai_limit:
+        typeof data.daily_pro_ai_limit === "number"
+          ? data.daily_pro_ai_limit
+          : DEFAULT_BOT_SETTINGS.daily_pro_ai_limit,
+    };
   } catch (err) {
     console.error("[BotGuard] Unexpected error reading bot_settings:", err);
     return DEFAULT_BOT_SETTINGS;
@@ -127,7 +155,6 @@ export async function consumeAiQuota(
 
     if (error) {
       console.error("[BotGuard] consume_ai_quota RPC error:", error.message);
-      // Fail-open jika RPC belum dibuat agar demo tidak mati total
       return {
         allowed: true,
         currentCount: 0,
@@ -162,6 +189,166 @@ export async function consumeAiQuota(
       currentCount: 0,
       remaining: dailyLimit,
       limit: dailyLimit,
+    };
+  }
+}
+
+/**
+ * Baca jumlah pemakaian AI hari ini (zona WIB) tanpa mengurangi kuota.
+ */
+export async function getTodayAiUsage(rateKey: string): Promise<number> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const today = getTodayWibDate();
+    const { data, error } = await supabase
+      .from("rate_limits")
+      .select("ai_count")
+      .eq("rate_key", rateKey)
+      .eq("window_date", today)
+      .maybeSingle<{ ai_count: number }>();
+
+    if (error || !data) return 0;
+    return Number(data.ai_count ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Cari akun Web User yang tertaut dengan nomor/ID WhatsApp ini (untuk cek status PRO & Custom EXIF).
+ */
+export async function getLinkedUserByWaId(
+  waId: string
+): Promise<LinkedWaMember | null> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("linked_wa_id", waId)
+      .maybeSingle<UserProfileRow>();
+
+    if (error || !data) return null;
+
+    const isProActive =
+      data.plan === "pro" &&
+      (!data.pro_expires_at ||
+        new Date(data.pro_expires_at).getTime() > Date.now());
+
+    if (data.plan === "pro" && !isProActive) {
+      await supabase
+        .from("user_profiles")
+        .update({ plan: "free", updated_at: new Date().toISOString() })
+        .eq("id", data.id);
+    }
+
+    return {
+      userId: data.id,
+      email: data.email,
+      fullName: data.full_name,
+      plan: isProActive ? "pro" : "free",
+      isProActive,
+      proExpiresAt: isProActive ? data.pro_expires_at : null,
+      customPackName: isProActive ? data.custom_pack_name : null,
+      customPackAuthor: isProActive ? data.custom_pack_author : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifikasi kode 6 digit dari perintah `/link <kode>` di WhatsApp dan tautkan ke user_profiles.
+ */
+export async function verifyAndLinkWaCode(
+  rawCode: string,
+  waId: string
+): Promise<
+  | { ok: true; member: LinkedWaMember }
+  | { ok: false; message: string }
+> {
+  const code = rawCode.replace(/\D/g, "").trim();
+  if (code.length !== 6) {
+    return {
+      ok: false,
+      message: "Kode tautan harus terdiri dari 6 angka. Contoh: `/link 482910`",
+    };
+  }
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: target, error } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("link_code", code)
+      .maybeSingle<UserProfileRow>();
+
+    if (error || !target) {
+      return {
+        ok: false,
+        message:
+          "Kode tidak ditemukan atau sudah dipakai. Buat kode baru di menu *Akun Saya* pada website.",
+      };
+    }
+
+    if (
+      !target.link_code_expires_at ||
+      new Date(target.link_code_expires_at).getTime() <= Date.now()
+    ) {
+      return {
+        ok: false,
+        message:
+          "Kode sudah kedaluwarsa (batas 15 menit). Silakan klik buat kode baru di halaman *Akun Saya*.",
+      };
+    }
+
+    // Lepaskan nomor WA ini jika sebelumnya tertaut ke akun lain
+    await supabase
+      .from("user_profiles")
+      .update({ linked_wa_id: null, updated_at: new Date().toISOString() })
+      .eq("linked_wa_id", waId)
+      .neq("id", target.id);
+
+    const { error: updateErr } = await supabase
+      .from("user_profiles")
+      .update({
+        linked_wa_id: waId,
+        link_code: null,
+        link_code_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", target.id);
+
+    if (updateErr) {
+      return {
+        ok: false,
+        message: "Gagal menautkan nomor WhatsApp. Silakan coba lagi.",
+      };
+    }
+
+    const isProActive =
+      target.plan === "pro" &&
+      (!target.pro_expires_at ||
+        new Date(target.pro_expires_at).getTime() > Date.now());
+
+    return {
+      ok: true,
+      member: {
+        userId: target.id,
+        email: target.email,
+        fullName: target.full_name,
+        plan: isProActive ? "pro" : "free",
+        isProActive,
+        proExpiresAt: isProActive ? target.pro_expires_at : null,
+        customPackName: isProActive ? target.custom_pack_name : null,
+        customPackAuthor: isProActive ? target.custom_pack_author : null,
+      },
+    };
+  } catch (err) {
+    console.error("[BotGuard] verifyAndLinkWaCode error:", err);
+    return {
+      ok: false,
+      message: "Terjadi kendala saat memverifikasi kode tautan.",
     };
   }
 }

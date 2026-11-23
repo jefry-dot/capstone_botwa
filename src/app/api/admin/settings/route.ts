@@ -11,6 +11,7 @@ interface PatchSettingsBody {
   ai_meme_enabled?: unknown;
   daily_ai_limit_per_user?: unknown;
   daily_web_ai_limit_per_ip?: unknown;
+  daily_pro_ai_limit?: unknown;
   maintenance_message?: unknown;
 }
 
@@ -92,6 +93,17 @@ export async function PATCH(request: NextRequest) {
       updates.daily_web_ai_limit_per_ip = val;
     }
 
+    if (body.daily_pro_ai_limit !== undefined) {
+      const val = Number(body.daily_pro_ai_limit);
+      if (!Number.isInteger(val) || val < 0 || val > 10000) {
+        return NextResponse.json(
+          { error: "daily_pro_ai_limit harus bilangan bulat 0–10000." },
+          { status: 400 }
+        );
+      }
+      updates.daily_pro_ai_limit = val;
+    }
+
     if (body.maintenance_message !== undefined) {
       if (typeof body.maintenance_message !== "string") {
         return NextResponse.json(
@@ -128,9 +140,7 @@ export async function PATCH(request: NextRequest) {
         },
         { onConflict: "id" }
       )
-      .select(
-        "id, maintenance_mode, ai_meme_enabled, daily_ai_limit_per_user, daily_web_ai_limit_per_ip, maintenance_message, updated_at"
-      )
+      .select("*")
       .single<BotSettings>();
 
     if (error || !data) {

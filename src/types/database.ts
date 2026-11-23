@@ -11,6 +11,8 @@ export type StickerCommandType =
 
 export type StickerStatus = "success" | "failed";
 
+export type UserPlan = "free" | "pro";
+
 export interface WaUserRow {
   wa_id: string;
   profile_name: string | null;
@@ -19,8 +21,35 @@ export interface WaUserRow {
   last_active_at: string;
 }
 
+export interface UserProfileRow {
+  id: string;
+  email: string;
+  full_name: string;
+  plan: UserPlan;
+  pro_expires_at: string | null;
+  custom_pack_name: string | null;
+  custom_pack_author: string | null;
+  linked_wa_id: string | null;
+  link_code: string | null;
+  link_code_expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubscriptionOrderRow {
+  id: string;
+  user_id: string;
+  plan: string;
+  amount_idr: number;
+  payment_method: "qris_demo" | "voucher" | "admin_grant";
+  voucher_code: string | null;
+  status: string;
+  created_at: string;
+}
+
 export interface StickerLogInsert {
   wa_id?: string | null;
+  user_id?: string | null;
   wa_message_id?: string | null;
   source: StickerSource;
   command_type: StickerCommandType;

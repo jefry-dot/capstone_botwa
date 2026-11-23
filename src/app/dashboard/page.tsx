@@ -12,15 +12,17 @@ import {
   SlidersHorizontal,
   Users,
   ShieldCheck,
+  Crown,
 } from "lucide-react";
 import StatsCards from "@/components/StatsCards";
 import ActivityChart from "@/components/ActivityChart";
 import RecentLogsTable from "@/components/RecentLogsTable";
 import AdminBotControls from "@/components/AdminBotControls";
 import AdminUserTable from "@/components/AdminUserTable";
+import AdminMembersTable from "@/components/AdminMembersTable";
 import type { DashboardStatsResponse } from "@/types/database";
 
-type DashboardTab = "overview" | "controls" | "users";
+type DashboardTab = "overview" | "controls" | "users" | "members";
 
 function formatClockWib(isoString: string): string {
   const date = new Date(isoString);
@@ -137,6 +139,7 @@ export default function DashboardPage() {
     { id: "overview", label: "Overview Telemetri", icon: BarChart3 },
     { id: "controls", label: "Kontrol Bot & Export", icon: SlidersHorizontal },
     { id: "users", label: "Moderasi User WA", icon: Users },
+    { id: "members", label: "Akun Web & Pro", icon: Crown },
   ];
 
   return (
@@ -180,11 +183,11 @@ export default function DashboardPage() {
           )}
 
           <Link
-            href="/studio"
+            href="/"
             className="zine-btn inline-flex items-center gap-2 bg-[#FFFDF7] px-4 py-2 font-mono text-xs font-bold uppercase text-[#161614]"
           >
             <Wand2 className="h-3.5 w-3.5" />
-            <span>Web Studio</span>
+            <span>Halaman Utama</span>
           </Link>
         </div>
       </div>
@@ -277,6 +280,11 @@ export default function DashboardPage() {
       {/* Tab 3: Moderasi Pengguna WA */}
       {activeTab === "users" && (
         <AdminUserTable onUnauthorized={handleUnauthorized} />
+      )}
+
+      {/* Tab 4: Manajemen Akun Web & Pro */}
+      {activeTab === "members" && (
+        <AdminMembersTable onUnauthorized={handleUnauthorized} />
       )}
     </div>
   );

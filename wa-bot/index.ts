@@ -22,13 +22,18 @@ import {
   getBotSettings,
   isWaUserBlocked,
   consumeAiQuota,
+  getTodayAiUsage,
+  getLinkedUserByWaId,
+  verifyAndLinkWaCode,
   type BotSettings,
+  type LinkedWaMember,
 } from "../src/lib/bot-guard";
 import {
   processImageToSticker,
   createQuoteBubbleSticker,
   createBratSticker,
   createBreakingNewsSticker,
+  type StickerExifOptions,
   type StickerResult,
 } from "../src/lib/sticker-processor";
 import type { StickerCommandType, StickerLogInsert } from "../src/types/database";
@@ -67,7 +72,9 @@ async function saveQrCodePng(qrText: string) {
         if (qrObj.isDark(r, c)) {
           const x = (c + quiet) * cell;
           const y = (r + quiet) * cell;
-          rects.push(`<rect x="${x}" y="${y}" width="${cell}" height="${cell}" fill="#000000"/>`);
+          rects.push(
+            `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" fill="#000000"/>`
+          );
         }
       }
     }
@@ -81,7 +88,7 @@ async function saveQrCodePng(qrText: string) {
 }
 
 const HELP_MESSAGE = [
-  "🎨 *WA AI Sticker Studio — Daftar Perintah*",
+  "🎨 *AmbaBot Studio — Daftar Perintah*",
   "",
   "📸 *Kirim atau Reply Foto dengan Caption:*",
   "• `/stiker` → Stiker transparan",
@@ -95,8 +102,11 @@ const HELP_MESSAGE = [
   "• `/qc Isi pesan chat` → Stiker bubble chat WA",
   "• `/brat teks kamu` → Stiker tipografi Brat hijau",
   "",
-  "🌐 *Web Studio:* https://capstone-botwa.vercel.app",
-  "Ketik `/help` kapan saja untuk melihat panduan ini lagi.",
+  "👑 *Akun & Paket Pro:*",
+  "• `/status` → Cek paket (Free/Pro), sisa kuota AI & Pack EXIF",
+  "• `/link <kode>` → Tautkan WA ke akun web untuk aktifkan Pro",
+  "",
+  "🌐 *Portal Akun & Upgrade Pro:* https://capstone-botwa.vercel.app",
 ].join("\n");
 
 // ============================================================================
@@ -128,11 +138,20 @@ async function insertStickerLog(log: StickerLogInsert) {
   }
 }
 
+function resolveMemberExif(
+  member: LinkedWaMember | null
+): StickerExifOptions | undefined {
+  if (!member?.isProActive) return undefined;
+  return {
+    packName: member.customPackName,
+    packPublisher: member.customPackAuthor,
+  };
+}
+
 // ============================================================================
 // Helper: Ekstrak JID, Nomor WA, Teks, dan Quoted Media
 // ============================================================================
 function normalizeWaId(jid: string): string {
-  // Ubah '628123456789:12@s.whatsapp.net' -> '628123456789'
   return jid.split("@")[0].split(":")[0].replace(/\D/g, "") || jid;
 }
 
@@ -174,6 +193,9 @@ function isCommandText(text: string): boolean {
   return (
     lower === "/help" ||
     lower === "/menu" ||
+    lower === "/status" ||
+    lower === "/link" ||
+    lower.startsWith("/link ") ||
     lower === "/stiker" ||
     lower.startsWith("/stiker ") ||
     lower === "/meme" ||
@@ -194,7 +216,7 @@ function isCommandText(text: string): boolean {
 }
 
 // ============================================================================
-// Main Bot Startup (Auto-Reconnect + QR Terminal)
+// Main Bot Startup (Auto-Reconnect + QR Terminal & PNG)
 // ============================================================================
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -204,7 +226,7 @@ async function startBot() {
     version,
     auth: state,
     logger: pino({ level: "silent" }),
-    browser: ["WA AI Sticker Studio", "Chrome", "1.0.0"],
+    browser: ["AmbaBot Studio", "Chrome", "1.0.0"],
     printQRInTerminal: false,
   });
 
@@ -226,8 +248,12 @@ async function startBot() {
       if (fs.existsSync(QR_PNG_PATH)) {
         fs.unlinkSync(QR_PNG_PATH);
       }
-      console.log("\n✅ [WA-BOT] TERHUBUNG! Bot siap menerima pesan dari SEMUA orang & grup.");
-      console.log("   Log & pengaturan admin otomatis tersinkron ke Supabase & Dashboard Vercel.\n");
+      console.log(
+        "\n✅ [WA-BOT] TERHUBUNG! Bot siap menerima perintah (/help, /stiker, /aimeme, /qc, /brat, /news, /link, /status)."
+      );
+      console.log(
+        "   Sinkronisasi Pro Plan, Custom EXIF, & Dashboard Admin aktif.\n"
+      );
     }
 
     if (connection === "close") {
@@ -266,7 +292,7 @@ async function startBot() {
 }
 
 // ============================================================================
-// Message Router (Private Chat & Group Chat)
+// Message Router (Strict Command-Only Mode + Pro Plan Sync)
 // ============================================================================
 async function handleIncomingMessage(
   sock: ReturnType<typeof makeWASocket>,
@@ -303,7 +329,7 @@ async function handleIncomingMessage(
   console.log(
     `📩 [WA-BOT] ${isGroup ? "[GRUP]" : "[DM]"} ${profileName} (${waId}): ${
       hasDirectImage ? "[FOTO] " : ""
-    }${text || "(tanpa caption)"}`
+    }${text}`
   );
 
   // 1. Cek blokir dari Admin Dashboard (wa_users.is_blocked)
@@ -312,7 +338,7 @@ async function handleIncomingMessage(
     return;
   }
 
-  // 2. Cek Maintenance Mode dari Admin Dashboard (bot_settings)
+  // 2. Cek Maintenance Mode global dari Admin Dashboard (bot_settings)
   const settings = await getBotSettings();
   if (settings.maintenance_mode) {
     await sock.sendMessage(
@@ -323,7 +349,84 @@ async function handleIncomingMessage(
     return;
   }
 
-  // 3. Handler Perintah Teks (/qc, /brat)
+  // 3. Perintah Tautkan Akun Web (/link <kode>)
+  if (lower === "/link" || lower.startsWith("/link ")) {
+    const code = text.slice(5).trim();
+    await upsertWaUser(waId, profileName);
+    const res = await verifyAndLinkWaCode(code, waId);
+
+    if (!res.ok) {
+      await sock.sendMessage(remoteJid, { text: `❌ ${res.message}` }, { quoted: msg });
+      return;
+    }
+
+    const { member } = res;
+    const limit = member.isProActive
+      ? settings.daily_pro_ai_limit
+      : settings.daily_ai_limit_per_user;
+    const packLabel =
+      member.isProActive && member.customPackName
+        ? `${member.customPackName} (${member.customPackAuthor || "Capstone Press 2026"})`
+        : "AmbaBot Studio (default)";
+
+    await sock.sendMessage(
+      remoteJid,
+      {
+        text: [
+          `✅ *Berhasil terhubung ke akun ${member.fullName}!*`,
+          `• Email: ${member.email}`,
+          `• Paket: *${member.isProActive ? "PRO CREATOR 👑" : "FREE PLAN"}*`,
+          `• Kuota AI Harian: *${limit}x / hari*`,
+          `• Pack Stiker EXIF: *${packLabel}*`,
+          "",
+          "Semua stiker yang kamu buat di WA sekarang otomatis tersinkron ke halaman *Akun Saya* di website!",
+        ].join("\n"),
+      },
+      { quoted: msg }
+    );
+    return;
+  }
+
+  // 4. Perintah Cek Status Paket & Kuota (/status)
+  if (lower === "/status") {
+    const [member, usedToday] = await Promise.all([
+      getLinkedUserByWaId(waId),
+      getTodayAiUsage(`wa:${waId}`),
+    ]);
+    const isPro = Boolean(member?.isProActive);
+    const limit = isPro
+      ? settings.daily_pro_ai_limit
+      : settings.daily_ai_limit_per_user;
+    const remaining = Math.max(0, limit - usedToday);
+    const packLabel =
+      isPro && member?.customPackName
+        ? `${member.customPackName} — ${member.customPackAuthor || "Capstone Press 2026"}`
+        : "AmbaBot Studio (default)";
+
+    await sock.sendMessage(
+      remoteJid,
+      {
+        text: [
+          "📊 *Status Akun AmbaBot Studio*",
+          `• Akun Web: ${member ? `${member.fullName} (${member.email})` : "Belum ditautkan"}`,
+          `• Paket Aktif: *${isPro ? "PRO CREATOR 👑" : "FREE PLAN"}*`,
+          `• Kuota AI Hari Ini: *${usedToday}/${limit}* (sisa ${remaining}x)`,
+          `• Nama Pack Stiker: *${packLabel}*`,
+          "",
+          isPro
+            ? "Atur nama pack EXIF kapan saja di: https://capstone-botwa.vercel.app/account"
+            : "Mau kuota AI 50x/hari & ganti nama pack stiker pakai namamu sendiri? Upgrade ke Pro di: https://capstone-botwa.vercel.app/register?plan=pro",
+        ].join("\n"),
+      },
+      { quoted: msg }
+    );
+    return;
+  }
+
+  // 5. Ambil status akun tertaut (untuk Kuota Pro & Custom Pack EXIF)
+  const linkedMember = await getLinkedUserByWaId(waId);
+
+  // 6. Handler Perintah Teks (/qc, /brat)
   if (lower === "/qc" || lower.startsWith("/qc ")) {
     const quoteInput = text.slice(3).trim() || quotedText;
     if (!quoteInput) {
@@ -337,7 +440,16 @@ async function handleIncomingMessage(
       return;
     }
 
-    await handleQuoteChat(sock, msg, remoteJid, waId, profileName, messageId, quoteInput);
+    await handleQuoteChat(
+      sock,
+      msg,
+      remoteJid,
+      waId,
+      profileName,
+      messageId,
+      quoteInput,
+      linkedMember
+    );
     return;
   }
 
@@ -352,11 +464,20 @@ async function handleIncomingMessage(
       return;
     }
 
-    await handleBrat(sock, msg, remoteJid, waId, profileName, messageId, bratInput);
+    await handleBrat(
+      sock,
+      msg,
+      remoteJid,
+      waId,
+      profileName,
+      messageId,
+      bratInput,
+      linkedMember
+    );
     return;
   }
 
-  // 4. Handler Foto Langsung ATAU Reply Foto dengan Perintah
+  // 7. Handler Foto Langsung ATAU Reply Foto dengan Perintah
   if (hasDirectImage || (hasQuotedImage && isCommandText(text))) {
     const targetMsg: WAMessage = hasDirectImage
       ? msg
@@ -378,12 +499,13 @@ async function handleIncomingMessage(
       profileName,
       messageId,
       text,
-      settings
+      settings,
+      linkedMember
     );
     return;
   }
 
-  // 5. Menu / Help (hanya merespons /help atau /menu)
+  // 8. Menu / Help
   if (lower === "/help" || lower === "/menu") {
     await sock.sendMessage(remoteJid, { text: HELP_MESSAGE }, { quoted: msg });
   }
@@ -399,7 +521,8 @@ async function handleQuoteChat(
   waId: string,
   profileName: string,
   messageId: string,
-  quoteText: string
+  quoteText: string,
+  linkedMember: LinkedWaMember | null
 ) {
   await upsertWaUser(waId, profileName);
   const startTime = Date.now();
@@ -408,12 +531,14 @@ async function handleQuoteChat(
     const result = await createQuoteBubbleSticker({
       name: profileName,
       text: quoteText,
+      exif: resolveMemberExif(linkedMember),
     });
 
     await sock.sendMessage(remoteJid, { sticker: result.buffer }, { quoted: msg });
 
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: "quote_chat",
@@ -422,13 +547,18 @@ async function handleQuoteChat(
       processing_time_ms: result.processingTimeMs,
       file_size_kb: result.sizeKb,
     });
-    console.log(`✅ [WA-BOT /qc] Terkirim (${result.sizeKb} KB, ${result.processingTimeMs} ms)`);
+    console.log(
+      `✅ [WA-BOT /qc] Terkirim (${result.sizeKb} KB, ${result.processingTimeMs} ms)${
+        linkedMember?.isProActive ? " [PRO]" : ""
+      }`
+    );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     console.error("[WA-BOT /qc] Error:", errMsg);
 
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: "quote_chat",
@@ -456,17 +586,22 @@ async function handleBrat(
   waId: string,
   profileName: string,
   messageId: string,
-  bratText: string
+  bratText: string,
+  linkedMember: LinkedWaMember | null
 ) {
   await upsertWaUser(waId, profileName);
   const startTime = Date.now();
 
   try {
-    const result = await createBratSticker({ text: bratText });
+    const result = await createBratSticker({
+      text: bratText,
+      exif: resolveMemberExif(linkedMember),
+    });
     await sock.sendMessage(remoteJid, { sticker: result.buffer }, { quoted: msg });
 
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: "brat_text",
@@ -475,13 +610,18 @@ async function handleBrat(
       processing_time_ms: result.processingTimeMs,
       file_size_kb: result.sizeKb,
     });
-    console.log(`✅ [WA-BOT /brat] Terkirim (${result.sizeKb} KB, ${result.processingTimeMs} ms)`);
+    console.log(
+      `✅ [WA-BOT /brat] Terkirim (${result.sizeKb} KB, ${result.processingTimeMs} ms)${
+        linkedMember?.isProActive ? " [PRO]" : ""
+      }`
+    );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     console.error("[WA-BOT /brat] Error:", errMsg);
 
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: "brat_text",
@@ -511,7 +651,8 @@ async function handleImageSticker(
   profileName: string,
   messageId: string,
   rawCaption: string,
-  settings: BotSettings
+  settings: BotSettings,
+  linkedMember: LinkedWaMember | null
 ) {
   await upsertWaUser(waId, profileName);
 
@@ -521,6 +662,7 @@ async function handleImageSticker(
   let commandType: StickerCommandType = "standard";
   let loggedCaption: string | null = caption ? caption.slice(0, 200) : null;
   const totalStart = Date.now();
+  const exif = resolveMemberExif(linkedMember);
 
   const isAiCommand =
     lower === "/aimeme" ||
@@ -540,16 +682,19 @@ async function handleImageSticker(
       return;
     }
 
-    const quota = await consumeAiQuota(
-      `wa:${waId}`,
-      settings.daily_ai_limit_per_user
-    );
+    const effectiveLimit = linkedMember?.isProActive
+      ? settings.daily_pro_ai_limit
+      : settings.daily_ai_limit_per_user;
+
+    const quota = await consumeAiQuota(`wa:${waId}`, effectiveLimit);
     if (!quota.allowed) {
+      const upsellMsg = linkedMember?.isProActive
+        ? `⏳ Kuota harian AI Vision Pro kamu sudah habis (${quota.limit}x/hari). Reset otomatis pukul 00:00 WIB.`
+        : `⏳ Kuota harian AI Vision gratis kamu sudah habis (${quota.limit}x/hari).\n\n👑 Mau kuota *${settings.daily_pro_ai_limit}x/hari* & ganti nama pack stiker pakai namamu sendiri? Upgrade ke *PRO CREATOR* di:\nhttps://capstone-botwa.vercel.app/register?plan=pro`;
+
       await sock.sendMessage(
         remoteJid,
-        {
-          text: `⏳ Kuota harian AI Vision kamu sudah habis (${quota.limit}x/hari). Coba lagi besok atau gunakan mode lain seperti \`/stiker Atas | Bawah\`, \`/news\`, \`/qc\`, atau \`/brat\`.`,
-        },
+        { text: upsellMsg },
         { quoted: originalMsg }
       );
       return;
@@ -582,15 +727,16 @@ async function handleImageSticker(
         topText: aiCaption.topText,
         bottomText: aiCaption.bottomText,
         mode: "contain",
+        exif,
       });
     } else if (lower === "/news" || lower.startsWith("/news ")) {
       commandType = "breaking_news";
       const headline = caption.slice(5).trim() || "BERITA TERKINI HARI INI";
       loggedCaption = headline.slice(0, 200);
-      result = await createBreakingNewsSticker(mediaBuffer, { headline });
+      result = await createBreakingNewsSticker(mediaBuffer, { headline, exif });
     } else if (lower === "/crop" || lower.startsWith("/crop ")) {
       commandType = "crop";
-      result = await processImageToSticker(mediaBuffer, { mode: "cover" });
+      result = await processImageToSticker(mediaBuffer, { mode: "cover", exif });
     } else if (caption.includes("|")) {
       commandType = "meme_text";
       const cleaned = caption.replace(/^\/(stiker|meme)\s*/i, "");
@@ -602,10 +748,14 @@ async function handleImageSticker(
         topText,
         bottomText,
         mode: "contain",
+        exif,
       });
     } else {
       commandType = "standard";
-      result = await processImageToSticker(mediaBuffer, { mode: "contain" });
+      result = await processImageToSticker(mediaBuffer, {
+        mode: "contain",
+        exif,
+      });
     }
 
     const totalProcessMs =
@@ -621,6 +771,7 @@ async function handleImageSticker(
 
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: commandType,
@@ -630,7 +781,9 @@ async function handleImageSticker(
       file_size_kb: result.sizeKb,
     });
     console.log(
-      `✅ [WA-BOT ${commandType}] Terkirim (${result.sizeKb} KB, ${totalProcessMs} ms)`
+      `✅ [WA-BOT ${commandType}] Terkirim (${result.sizeKb} KB, ${totalProcessMs} ms)${
+        linkedMember?.isProActive ? " [PRO]" : ""
+      }`
     );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
@@ -638,6 +791,7 @@ async function handleImageSticker(
 
     await insertStickerLog({
       wa_id: waId,
+      user_id: linkedMember?.userId ?? null,
       wa_message_id: messageId,
       source: "whatsapp",
       command_type: commandType,
